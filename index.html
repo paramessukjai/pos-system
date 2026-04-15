@@ -12,10 +12,6 @@
     getFirestore, collection, doc, getDocs, setDoc, deleteDoc, onSnapshot, query, orderBy
   } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
-  // ========================================================
-  // 🔧 วาง firebaseConfig ของคุณที่นี่
-  // ได้จาก Firebase Console → Project Settings → Your apps
-  // ========================================================
   const firebaseConfig = {
     apiKey: "AIzaSyCSdUJxRXwPLccNsDB9jCDygeQPziH7jh0",
     authDomain: "posnajaaa.firebaseapp.com",
@@ -34,6 +30,9 @@
   window._fbModules = { collection, doc, getDocs, setDoc, deleteDoc, onSnapshot, query, orderBy };
   window._fbReady = true;
 
+  // ---- แจ้ง script หลักว่า Firebase พร้อมแล้ว ----
+  window.dispatchEvent(new Event('fbReady'));
+
   // ---- Real-time listener: sync allOrders จาก Firestore ----
   const ordersRef = collection(db, "orders");
   onSnapshot(query(ordersRef, orderBy("timestamp", "desc")), (snapshot) => {
@@ -41,14 +40,23 @@
     snapshot.forEach(docSnap => {
       newOrders.push({ ...docSnap.data(), id: docSnap.id });
     });
-    window.allOrders = newOrders;
+    // อัปเดต allOrders ผ่าน global setter เพื่อให้ script หลักรับรู้ด้วย
+    if (typeof window._setAllOrders === 'function') {
+      window._setAllOrders(newOrders);
+    }
     window.syncOidCounter && window.syncOidCounter();
     window.renderTmap && window.renderTmap();
     if (document.getElementById('page-summary')?.classList.contains('active')) {
       window.renderSummary && window.renderSummary();
     }
   }, (err) => {
-    console.warn("Firestore snapshot error:", err);
+    console.error("Firestore snapshot error:", err);
+    // แสดง error ให้ user เห็น
+    const notice = document.getElementById('fb-status');
+    if (notice) {
+      notice.textContent = '⚠️ Firebase เชื่อมต่อไม่ได้: ' + err.message;
+      notice.style.display = 'block';
+    }
   });
 </script>
 </head>
@@ -215,6 +223,8 @@ body{font-family:'Sarabun',sans-serif;font-size:14px;color:var(--color-text-prim
 }
 </style>
 
+<div id="fb-status" style="display:none;position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:#c0392b;color:#fff;padding:10px 20px;border-radius:10px;font-size:13px;z-index:9999;box-shadow:0 4px 16px rgba(0,0,0,0.3)"></div>
+<div id="fb-loading" style="display:flex;position:fixed;inset:0;background:rgba(255,255,255,0.85);align-items:center;justify-content:center;z-index:9998;font-size:15px;color:#e8620a;font-family:Sarabun,sans-serif;font-weight:600">🔥 กำลังเชื่อมต่อ Firebase...</div>
 <h2 style="position:absolute;width:1px;height:1px;overflow:hidden">ระบบ POS บุฟเฟ่ต์ - จัดการโต๊ะ เมนู และออร์เดอร์</h2>
 
 <div class="app">
@@ -509,20 +519,14 @@ let payMethods = [
   {id:'p4',name:'เงินสด'},
 ];
 
-// allOrders: paid orders are historical, pending orders = active tables
-// Added: timestamp (when created), openTime (when table opened), discId (for restoring discount)
-let allOrders = [
-  {id:'o1',table:13,items:[{id:'m2',name:'Buffet Promotion 299',price:299,qty:2,cat:'main'}],pay:'QR Payment',discId:null,discName:'',discAmt:0,total:598,status:'จ่ายแล้ว',timestamp:_now-5*3600000,openTime:_now-7*3600000},
-  {id:'o2',table:12,items:[{id:'m1',name:'Buffet 329',price:329,qty:3,cat:'main'}],pay:'Master Card',discId:null,discName:'',discAmt:0,total:987,status:'จ่ายแล้ว',timestamp:_now-4.5*3600000,openTime:_now-6.5*3600000},
-  {id:'o3',table:2,items:[{id:'m1',name:'Buffet 329',price:329,qty:2,cat:'main'}],pay:'QR Payment',discId:'d2',discName:'รีวิว 30฿',discAmt:30,total:628,status:'จ่ายแล้ว',timestamp:_now-4*3600000,openTime:_now-6*3600000},
-  {id:'o4',table:5,items:[{id:'m1',name:'Buffet 329',price:329,qty:3,cat:'main'}],pay:'QR Payment',discId:null,discName:'',discAmt:0,total:987,status:'จ่ายแล้ว',timestamp:_now-3.5*3600000,openTime:_now-5.5*3600000},
-  {id:'o5',table:9,items:[{id:'m1',name:'Buffet 329',price:329,qty:2,cat:'main'}],pay:'QR Payment',discId:null,discName:'',discAmt:0,total:658,status:'จ่ายแล้ว',timestamp:_now-3*3600000,openTime:_now-5*3600000},
-  {id:'o6',table:14,items:[{id:'m1',name:'Buffet 329',price:329,qty:3,cat:'main'}],pay:'Visa',discId:null,discName:'',discAmt:0,total:987,status:'จ่ายแล้ว',timestamp:_now-2.5*3600000,openTime:_now-4.5*3600000},
-  {id:'o7',table:1,items:[{id:'m2',name:'Buffet Promotion 299',price:299,qty:4,cat:'main'}],pay:'Master Card',discId:null,discName:'',discAmt:0,total:1196,status:'จ่ายแล้ว',timestamp:_now-2*3600000,openTime:_now-4*3600000},
-  {id:'o8',table:3,items:[{id:'m4',name:'Dookki Daytime',price:199,qty:3,cat:'main'}],pay:'QR Payment',discId:null,discName:'',discAmt:0,total:597,status:'จ่ายแล้ว',timestamp:_now-1.5*3600000,openTime:_now-3.5*3600000},
-  {id:'o9',table:18,items:[{id:'m4',name:'Dookki Daytime',price:199,qty:1,cat:'main'}],pay:'Master Card',discId:null,discName:'',discAmt:0,total:199,status:'จ่ายแล้ว',timestamp:_now-1*3600000,openTime:_now-3*3600000},
-  {id:'o10',table:21,items:[{id:'m2',name:'Buffet Promotion 299',price:299,qty:2,cat:'main'}],pay:'Master Card',discId:null,discName:'',discAmt:0,total:598,status:'จ่ายแล้ว',timestamp:_now-0.5*3600000,openTime:_now-2.5*3600000},
-];
+// allOrders: โหลดจาก Firestore ผ่าน onSnapshot (ไม่มีข้อมูล hardcode)
+let allOrders = [];
+
+// ---- Global setter ให้ Firebase module อัปเดต allOrders ได้โดยตรง ----
+window._setAllOrders = function(newOrders) {
+  allOrders = newOrders;
+  window.allOrders = allOrders;
+};
 
 let selectedTable = null;
 let currentOrder = [];
@@ -549,21 +553,23 @@ function syncOidCounter(){
   oidCounter = Math.max(oidCounter, maxId);
 }
 // ===== FIREBASE SAVE / LOAD (แทน localStorage) =====
+// ===== FIREBASE SAVE / LOAD =====
 async function saveOrders(){
   if(!window._fbReady) {
     // fallback localStorage ถ้า Firebase ยังไม่พร้อม
     try{ localStorage.setItem(ORDERS_STORAGE_KEY, JSON.stringify(allOrders)); }catch(e){}
     return;
   }
-  const { collection, doc, setDoc, deleteDoc } = window._fbModules;
+  const { collection, doc, setDoc } = window._fbModules;
   const db = window._db;
   try {
-    // Save/update ทุก order ใน allOrders ไปยัง Firestore
     for(const o of allOrders){
       await setDoc(doc(db, "orders", String(o.id)), o);
     }
   } catch(err){
-    console.warn('Firebase saveOrders error:', err);
+    console.error('Firebase saveOrders error:', err);
+    const notice = document.getElementById('fb-status');
+    if(notice){ notice.textContent = '⚠️ บันทึกไม่สำเร็จ: ' + err.message; notice.style.display='block'; setTimeout(()=>notice.style.display='none', 5000); }
   }
 }
 
@@ -589,9 +595,28 @@ async function deleteOneOrder(id){
 }
 
 function loadOrders(){
-  // ไม่ต้องทำอะไรแล้ว — Firebase onSnapshot จะ sync allOrders ให้อัตโนมัติ
-  // เก็บฟังก์ชันนี้ไว้เพื่อไม่ให้ error จากการเรียก init
+  // Firebase onSnapshot จะ sync allOrders ให้อัตโนมัติ
+  // ฟังก์ชันนี้เก็บไว้เพื่อ compatibility กับการเรียก init
 }
+
+// ---- ซ่อน loading overlay เมื่อ Firebase พร้อม ----
+window.addEventListener('fbReady', () => {
+  // รอ snapshot รอบแรกสักครู่ก่อนซ่อน loading
+  setTimeout(() => {
+    const loading = document.getElementById('fb-loading');
+    if(loading) loading.style.display = 'none';
+  }, 1500);
+});
+
+// ---- ถ้า Firebase ไม่ตอบใน 8 วินาที แสดง error ----
+setTimeout(() => {
+  const loading = document.getElementById('fb-loading');
+  if(loading && loading.style.display !== 'none') {
+    loading.innerHTML = '❌ เชื่อมต่อ Firebase ไม่ได้<br><small style="font-size:12px;font-weight:400">กรุณาตรวจสอบ Security Rules และ internet</small>';
+    loading.style.background = 'rgba(255,255,255,0.95)';
+    loading.style.color = '#c0392b';
+  }
+}, 8000);
 function getPenaltyValue(){
   const el = document.getElementById('penalty-val');
   return el ? (parseInt(el.value,10) || 0) : 0;
@@ -1000,7 +1025,11 @@ function cancelTable(){
   const pending=getPendingOrder(selectedTable);
   if(!pending){alert('ไม่มีออร์เดอร์ค้างในโต๊ะนี้');return;}
   if(!confirm(`⚠️ ยืนยันยกเลิกโต๊ะ ${selectedTable}?\nออร์เดอร์ทั้งหมดจะถูกลบและไม่สามารถกู้คืนได้`)) return;
-  allOrders=allOrders.filter(o=>!(o.table===selectedTable && o.status==='ยังไม่จ่าย'));
+  const toRemove = allOrders.filter(o=>o.table===selectedTable && o.status==='ยังไม่จ่าย');
+  toRemove.forEach(o => {
+    allOrders.splice(allOrders.indexOf(o), 1);
+    deleteOneOrder(o.id);
+  });
   clearOrder();
   saveOrders();
   renderTmap();
@@ -1090,7 +1119,9 @@ function doSplitItems(){
     });
   }
   if(!sourcePending.items.length){
-    allOrders=allOrders.filter(o=>o!==sourcePending);
+    const idx = allOrders.indexOf(sourcePending);
+    if(idx > -1) allOrders.splice(idx, 1);
+    deleteOneOrder(sourcePending.id);
     currentOrder=[];
   } else {
     currentOrder=sourcePending.items.map(item=>({...item}));
@@ -1167,7 +1198,11 @@ function doMergeTable(){
     targetPending.penalty=(targetPending.penalty||0)+(sourcePending.penalty||0);
     targetPending.total=Math.max(0,newSub-targetPending.discAmt+targetPending.penalty);
     // Remove source pending order
-    allOrders=allOrders.filter(o=>!(o.table===source && o.status==='ยังไม่จ่าย'));
+    const toRemoveMerge = allOrders.filter(o=>o.table===source && o.status==='ยังไม่จ่าย');
+    toRemoveMerge.forEach(o => {
+      allOrders.splice(allOrders.indexOf(o), 1);
+      deleteOneOrder(o.id);
+    });
   } else {
     // No target pending, just move source here
     sourcePending.table=selectedTable;
@@ -1283,21 +1318,24 @@ function openClearHistoryModal(){
 }
 function doClearHistory(){
   const now=new Date();
-  allOrders=allOrders.filter(o=>{
-    if(o.status==='ยังไม่จ่าย') return true; // always keep pending
+  const toDelete = allOrders.filter(o=>{
+    if(o.status==='ยังไม่จ่าย') return false;
     const ts=o.timestamp;
-    if(!ts) return false;
+    if(!ts) return true;
     const d=new Date(ts);
     if(summaryPeriod==='day'){
-      return !(d.getDate()===now.getDate()&&d.getMonth()===now.getMonth()&&d.getFullYear()===now.getFullYear());
+      return d.getDate()===now.getDate()&&d.getMonth()===now.getMonth()&&d.getFullYear()===now.getFullYear();
     } else if(summaryPeriod==='week'){
-      return !((now-d)<7*24*3600000);
+      return (now-d)<7*24*3600000;
     } else {
-      return !(d.getMonth()===now.getMonth()&&d.getFullYear()===now.getFullYear());
+      return d.getMonth()===now.getMonth()&&d.getFullYear()===now.getFullYear();
     }
   });
+  toDelete.forEach(o => {
+    allOrders.splice(allOrders.indexOf(o), 1);
+    deleteOneOrder(o.id);
+  });
   closeAllModals();
-  saveOrders();
   renderSummary();
   renderTmap();
   alert('🗑 ล้างประวัติเรียบร้อย');
@@ -1535,6 +1573,9 @@ window.allOrders = allOrders;
 window.syncOidCounter = syncOidCounter;
 window.renderTmap = renderTmap;
 window.renderSummary = renderSummary;
+
+// ===== อัปเดต window globals ทุกครั้งที่ allOrders เปลี่ยน =====
+// (ทำผ่าน window._setAllOrders ที่ Firebase module เรียกใช้)
 </script>
   
 </body>
