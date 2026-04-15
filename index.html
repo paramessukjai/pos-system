@@ -1,0 +1,1540 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Buffet POS</title>
+
+<!-- Firebase SDK v10 -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+  import {
+    getFirestore, collection, doc, getDocs, setDoc, deleteDoc, onSnapshot, query, orderBy
+  } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+  // ========================================================
+  // 🔧 วาง firebaseConfig ของคุณที่นี่
+  // ได้จาก Firebase Console → Project Settings → Your apps
+  // ========================================================
+  const firebaseConfig = {
+    apiKey: "AIzaSyCSdUJxRXwPLccNsDB9jCDygeQPziH7jh0",
+    authDomain: "posnajaaa.firebaseapp.com",
+    projectId: "posnajaaa",
+    storageBucket: "posnajaaa.firebasestorage.app",
+    messagingSenderId: "1089065672381",
+    appId: "1:1089065672381:web:fd8ae75ba17d961d6ba1d4",
+    measurementId: "G-8TQGR1WGH1"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const db = getFirestore(app);
+
+  // ---- Expose to global scope ----
+  window._db = db;
+  window._fbModules = { collection, doc, getDocs, setDoc, deleteDoc, onSnapshot, query, orderBy };
+  window._fbReady = true;
+
+  // ---- Real-time listener: sync allOrders จาก Firestore ----
+  const ordersRef = collection(db, "orders");
+  onSnapshot(query(ordersRef, orderBy("timestamp", "desc")), (snapshot) => {
+    const newOrders = [];
+    snapshot.forEach(docSnap => {
+      newOrders.push({ ...docSnap.data(), id: docSnap.id });
+    });
+    window.allOrders = newOrders;
+    window.syncOidCounter && window.syncOidCounter();
+    window.renderTmap && window.renderTmap();
+    if (document.getElementById('page-summary')?.classList.contains('active')) {
+      window.renderSummary && window.renderSummary();
+    }
+  }, (err) => {
+    console.warn("Firestore snapshot error:", err);
+  });
+</script>
+</head>
+<body>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600&family=Kanit:wght@400;500;600&display=swap');
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--c-orange:#e8620a;--c-orange-light:#fff3ec;--c-orange-mid:#fbd5bc;--c-green:#1a7a4a;--c-green-light:#eaf5f0;--c-red:#c0392b;--c-red-light:#fdecea;--c-blue:#1565c0;--c-blue-light:#e8f0fe;--c-amber:#b7690a;--c-amber-light:#fff8e1;--c-gray:#6b7280;--c-border:rgba(0,0,0,0.1);--c-bg:var(--color-background-primary);--c-bg2:var(--color-background-secondary)}
+html,body{height:100%}
+body{font-family:'Sarabun',sans-serif;font-size:14px;color:var(--color-text-primary);min-height:100vh}
+.app{display:grid;grid-template-rows:52px 1fr;height:100vh;min-height:640px;background:var(--c-bg2)}
+.topbar{display:flex;align-items:center;gap:0;border-bottom:0.5px solid var(--c-border);background:var(--c-bg);padding:0 16px}
+.topbar-logo{font-family:'Kanit',sans-serif;font-weight:600;font-size:16px;color:var(--c-orange);margin-right:20px}
+.nav-tab{padding:0 16px;height:52px;display:flex;align-items:center;font-size:13px;cursor:pointer;border-bottom:2.5px solid transparent;color:var(--color-text-secondary);transition:all 0.15s;white-space:nowrap}
+.nav-tab.active{color:var(--c-orange);border-bottom-color:var(--c-orange);font-weight:600}
+.nav-tab:hover:not(.active){color:var(--color-text-primary);background:var(--c-bg2)}
+.body{display:grid;grid-template-columns:minmax(0,1fr) clamp(320px,34vw,430px);overflow:hidden;min-height:0}
+.main{overflow-y:auto;padding:14px}
+.sidebar{background:var(--c-bg);border-left:0.5px solid var(--c-border);display:flex;flex-direction:column;overflow-y:auto;overflow-x:hidden;min-height:0}
+.page{display:none}
+.page.active{display:block}
+
+/* TABLE MAP */
+.tmap{display:grid;grid-template-columns:repeat(auto-fit,minmax(92px,1fr));gap:7px;margin-bottom:14px}
+.tbl{border-radius:10px;border:1.5px solid var(--c-border);padding:8px 4px 5px;text-align:center;cursor:pointer;font-size:12px;font-weight:600;background:var(--c-bg);transition:all 0.15s;line-height:1.3}
+.tbl .tnum{font-size:13px}
+.tbl .tstat{font-size:9px;font-weight:400;margin-top:1px}
+.tbl .tmr{font-size:10px;font-weight:700;margin-top:1px;letter-spacing:0.5px}
+.tbl.empty{color:var(--c-gray)}
+.tbl.occupied{background:#fdecea;border-color:#e57373;color:#c0392b}
+.tbl.time-up{background:#7f0000 !important;border-color:#c0392b !important;color:#fff !important;animation:pulse 1s infinite}
+.tbl.selected{background:#e8f0fe;border-color:#1565c0;color:#1565c0;box-shadow:0 0 0 2px #1565c0}
+.tbl:hover:not(.selected){border-color:#999}
+.tmr-warn{color:#c0392b}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.65}}
+
+/* TABLE ACTION BUTTONS */
+.tbl-actions{display:flex;gap:5px;padding:7px 12px;border-bottom:0.5px solid var(--c-border);background:var(--c-orange-light);overflow-x:auto;overflow-y:hidden}
+.tbl-act{flex:0 0 auto;min-width:72px;padding:6px 8px;border-radius:7px;font-size:10px;font-weight:600;cursor:pointer;border:1.5px solid var(--c-border);background:var(--c-bg);color:var(--c-gray);text-align:center;font-family:'Sarabun',sans-serif;transition:all 0.13s;line-height:1.2}
+.tbl-act:hover{background:var(--c-bg2);border-color:#999}
+.tbl-act.danger{color:var(--c-red);border-color:#e57373}
+.tbl-act.danger:hover{background:var(--c-red-light)}
+.tbl-act.move{color:var(--c-blue);border-color:#90caf9}
+.tbl-act.move:hover{background:var(--c-blue-light)}
+.tbl-act.merge{color:var(--c-green);border-color:#a5d6a7}
+.tbl-act.merge:hover{background:var(--c-green-light)}
+
+/* MENU */
+.menu-cats{display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap}
+.mcat{padding:5px 12px;border-radius:20px;font-size:12px;cursor:pointer;border:1.5px solid var(--c-border);background:var(--c-bg);color:var(--c-gray);font-weight:500}
+.mcat.active{background:var(--c-orange);color:#fff;border-color:var(--c-orange)}
+.menu-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px}
+.mcrd{background:var(--c-bg);border:1.5px solid var(--c-border);border-radius:12px;padding:10px 12px;cursor:pointer;transition:all 0.15s}
+.mcrd:hover{border-color:var(--c-orange);background:var(--c-orange-light)}
+.mcrd .mn{font-size:13px;font-weight:600;margin-bottom:2px;line-height:1.3}
+.mcrd .mp{font-size:18px;font-weight:700;color:var(--c-orange)}
+.mcrd .ms{font-size:10px;color:var(--c-gray);margin-top:1px}
+.badge{display:inline-block;font-size:10px;padding:2px 7px;border-radius:20px;font-weight:600}
+.bdg-main{background:#e8f5e9;color:#2e7d32}
+.bdg-special{background:#e3f2fd;color:#1565c0}
+.bdg-paid{background:#e8f5e9;color:#2e7d32}
+.bdg-pending{background:#fff8e1;color:#b7690a}
+.bdg-void{background:#f3f4f6;color:#6b7280;text-decoration:line-through}
+
+/* SIDEBAR ORDER */
+.sdb-head{padding:12px 14px;border-bottom:0.5px solid var(--c-border);display:flex;align-items:center;justify-content:space-between}
+.sdb-title{font-size:14px;font-weight:600}
+.sdb-body{flex:1;overflow-y:auto;padding:10px 14px;min-height:0}
+.sdb-foot{padding:10px 14px 16px;border-top:0.5px solid var(--c-border);background:var(--c-bg);position:sticky;bottom:0}
+.oi{display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:0.5px solid var(--c-border);font-size:13px}
+.oi-name{flex:1;line-height:1.3}
+.qc{display:flex;align-items:center;gap:5px}
+.qb{width:22px;height:22px;border-radius:50%;border:1.5px solid var(--c-border);background:var(--c-bg);cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;line-height:1}
+.oi-price{min-width:52px;text-align:right;font-weight:600}
+.sum-row{display:flex;justify-content:space-between;font-size:13px;padding:3px 0;color:var(--c-gray)}
+.sum-total{font-size:16px;font-weight:700;color:var(--color-text-primary);display:flex;justify-content:space-between;padding-top:8px;border-top:1.5px solid var(--c-border);margin-top:6px}
+.disc-block{background:var(--c-orange-light);border-radius:8px;padding:8px 10px;margin:8px 0}
+.disc-block label{font-size:11px;color:var(--c-orange);font-weight:600;display:block;margin-bottom:5px}
+.disc-sel{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px}
+.disc-chip{padding:3px 8px;border-radius:12px;font-size:11px;border:1.5px solid var(--c-orange-mid);background:var(--c-bg);cursor:pointer;color:var(--c-orange);font-weight:500}
+.disc-chip.active{background:var(--c-orange);color:#fff}
+.disc-custom{display:flex;gap:6px;align-items:center;margin-top:4px}
+.disc-custom input{flex:1;padding:4px 8px;border-radius:6px;border:1px solid var(--c-border);font-size:12px;background:var(--c-bg);color:var(--color-text-primary)}
+.pay-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin:8px 0}
+.pay-btn{padding:7px;border-radius:8px;border:1.5px solid var(--c-border);background:var(--c-bg);font-size:12px;cursor:pointer;text-align:center;color:var(--c-gray);font-weight:500}
+.pay-btn.active{background:var(--c-blue-light);color:var(--c-blue);border-color:var(--c-blue);font-weight:600}
+.mini-btn{padding:6px 10px;border-radius:8px;border:1px solid var(--c-border);background:var(--c-bg);font-size:11px;cursor:pointer;font-family:'Sarabun',sans-serif}
+.split-pay-list{display:flex;flex-direction:column;gap:6px;margin-top:8px}
+.split-pay-row{display:grid;grid-template-columns:minmax(0,1fr) 92px 28px;gap:6px;align-items:center}
+.split-pay-row select,.split-pay-row input{padding:6px 8px;border-radius:8px;border:1px solid var(--c-border);font-size:12px;background:var(--c-bg);color:var(--color-text-primary);font-family:'Sarabun',sans-serif}
+.split-pay-row button{width:28px;height:28px;border-radius:8px;border:1px solid #e57373;background:var(--c-red-light);color:var(--c-red);cursor:pointer}
+.pay-hint{font-size:10px;color:var(--c-gray);margin-top:6px}
+.act-btn{width:100%;padding:9px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;margin-top:5px;border:none;font-family:'Sarabun',sans-serif}
+.btn-save{background:var(--c-bg2);color:var(--color-text-primary);border:1.5px solid var(--c-border)}
+.btn-pay{background:var(--c-green);color:#fff}
+.btn-pay:disabled{opacity:0.4;cursor:not-allowed}
+.empty-msg{color:var(--c-gray);font-size:13px;text-align:center;padding:20px 0}
+
+/* SETTINGS */
+.set-section{background:var(--c-bg);border-radius:12px;border:0.5px solid var(--c-border);padding:14px;margin-bottom:12px}
+.set-section h3{font-size:14px;font-weight:600;margin-bottom:10px;color:var(--color-text-primary)}
+.set-items{display:flex;flex-direction:column;gap:7px}
+.set-item{display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--c-bg2);border-radius:8px;border:0.5px solid var(--c-border)}
+.set-item-info{flex:1}
+.set-item-name{font-size:13px;font-weight:600}
+.set-item-sub{font-size:11px;color:var(--c-gray)}
+.set-item-price{font-size:15px;font-weight:700;color:var(--c-orange);min-width:60px;text-align:right}
+.icon-btn{width:28px;height:28px;border-radius:6px;border:0.5px solid var(--c-border);background:var(--c-bg);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:13px}
+.icon-btn:hover{background:var(--c-bg2)}
+.icon-btn.del:hover{background:var(--c-red-light);border-color:#e57373}
+.add-form{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap}
+.add-form input,.add-form select{padding:6px 10px;border-radius:8px;border:1px solid var(--c-border);font-size:13px;background:var(--c-bg);color:var(--color-text-primary);font-family:'Sarabun',sans-serif}
+.add-form input[type=text]{flex:2;min-width:100px}
+.add-form input[type=number]{width:80px}
+.add-btn{padding:6px 14px;border-radius:8px;background:var(--c-orange);color:#fff;border:none;font-size:13px;cursor:pointer;font-weight:600;font-family:'Sarabun',sans-serif}
+
+/* SUMMARY */
+.period-tabs{display:flex;gap:6px;margin-bottom:12px}
+.period-tab{padding:5px 16px;border-radius:20px;font-size:12px;cursor:pointer;border:1.5px solid var(--c-border);background:var(--c-bg);color:var(--c-gray);font-weight:500;transition:all 0.15s}
+.period-tab.active{background:var(--c-orange);color:#fff;border-color:var(--c-orange)}
+.sum-filters{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0 12px}
+.sum-filter{padding:4px 12px;border-radius:20px;font-size:11px;cursor:pointer;border:1.5px solid var(--c-border);background:var(--c-bg);color:var(--c-gray);font-weight:500}
+.sum-filter.active{background:var(--c-blue);color:#fff;border-color:var(--c-blue)}
+.sum-stats{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px}
+.scard{background:var(--c-bg);border-radius:12px;border:0.5px solid var(--c-border);padding:12px}
+.scard .slabel{font-size:11px;color:var(--c-gray);margin-bottom:3px}
+.scard .sval{font-size:22px;font-weight:700}
+.pay-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin:0 0 14px}
+.orders-tbl{width:100%;border-collapse:collapse;font-size:12px}
+.orders-tbl th{text-align:left;padding:7px 8px;border-bottom:2px solid var(--c-border);font-size:11px;color:var(--c-gray);font-weight:600;text-transform:uppercase}
+.orders-tbl td{padding:7px 8px;border-bottom:0.5px solid var(--c-border)}
+.orders-tbl tr:hover td{background:var(--c-bg2)}
+.dl-btn{padding:7px 14px;border-radius:8px;background:var(--c-green);color:#fff;border:none;font-size:12px;cursor:pointer;font-weight:600;font-family:'Sarabun',sans-serif}
+.clear-btn{padding:7px 14px;border-radius:8px;background:var(--c-red);color:#fff;border:none;font-size:12px;cursor:pointer;font-weight:600;font-family:'Sarabun',sans-serif}
+
+/* MODALS */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.35);display:flex;align-items:center;justify-content:center;z-index:1000;display:none}
+.modal{background:#fff;border-radius:16px;padding:20px;width:320px;max-width:90vw;border:1px solid rgba(0,0,0,0.08);box-shadow:0 18px 50px rgba(0,0,0,0.22);color:#1f2937}
+.modal h3{font-size:15px;font-weight:700;margin-bottom:14px;color:#111827}
+.modal p{color:#4b5563}
+.modal .mf-row{margin-bottom:10px}
+.modal .mf-row label{font-size:12px;color:#4b5563;display:block;margin-bottom:4px;font-weight:600}
+.modal .mf-row input,.modal .mf-row select{width:100%;padding:7px 10px;border-radius:8px;border:1px solid #d1d5db;font-size:13px;background:#fff;color:#111827;font-family:'Sarabun',sans-serif}
+.modal .mbtn-row{display:flex;gap:8px;margin-top:14px}
+.modal .mbtn-row button{flex:1;padding:8px;border-radius:8px;font-size:13px;cursor:pointer;font-weight:600;font-family:'Sarabun',sans-serif}
+.mbtn-cancel{background:#f3f4f6;border:1px solid #d1d5db;color:#111827}
+.mbtn-ok{background:var(--c-orange);color:#fff;border:none}
+.mbtn-danger{background:var(--c-red);color:#fff;border:none}
+.confirm-icon{font-size:36px;text-align:center;margin-bottom:10px}
+.confirm-msg{font-size:13px;color:#4b5563;text-align:center;margin-bottom:4px;line-height:1.5}
+.modal-info-box{background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;padding:10px 12px;margin:10px 0;font-size:12px;line-height:1.8;color:#111827}
+.summary-group-row td{padding:10px 8px;background:#f9fafb;border-top:1.5px solid #d1d5db;border-bottom:1px solid #e5e7eb;font-size:11px;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:0.04em}
+
+@media (max-width: 1100px){
+  .body{grid-template-columns:minmax(0,1fr) minmax(320px,40vw)}
+  .sidebar{min-width:0}
+}
+
+@media (max-width: 920px){
+  .app{height:auto;min-height:100vh}
+  .body{grid-template-columns:1fr}
+  .sidebar{border-left:none;border-top:0.5px solid var(--c-border)}
+  .sdb-foot{position:static}
+}
+</style>
+
+<h2 style="position:absolute;width:1px;height:1px;overflow:hidden">ระบบ POS บุฟเฟ่ต์ - จัดการโต๊ะ เมนู และออร์เดอร์</h2>
+
+<div class="app">
+  <div class="topbar">
+    <div class="topbar-logo">🍲 Buffet POS</div>
+    <div class="nav-tab active" onclick="navTo('order',this)">📋 ออร์เดอร์</div>
+    <div class="nav-tab" onclick="navTo('summary',this)">📊 สรุปยอด</div>
+    <div class="nav-tab" onclick="navTo('settings',this)">⚙️ ตั้งค่า</div>
+    <span id="clock" style="margin-left:auto;font-size:12px;color:var(--c-gray)"></span>
+  </div>
+  <div class="body">
+    <div class="main">
+
+      <!-- ORDER PAGE -->
+      <div class="page active" id="page-order">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <span style="font-size:13px;font-weight:600">โต๊ะทั้งหมด 26 โต๊ะ</span>
+          <span style="font-size:11px;color:var(--c-gray)">
+            <span style="color:#c0392b">■</span> กำลังใช้ &nbsp;
+            <span style="color:#9ca3af">■</span> ว่าง
+          </span>
+        </div>
+        <div class="tmap" id="tmap"></div>
+        <div class="menu-cats" id="mcats"></div>
+        <div class="menu-grid" id="mgrid"></div>
+      </div>
+
+      <!-- SUMMARY PAGE -->
+      <div class="page" id="page-summary">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <span style="font-size:16px;font-weight:700">สรุปยอดขาย</span>
+          <span id="sum-date" style="font-size:12px;color:var(--c-gray)"></span>
+        </div>
+        <!-- Period Tabs -->
+        <div class="period-tabs">
+          <div class="period-tab active" id="ptab-day" onclick="setSummaryPeriod('day')">📅 วันนี้</div>
+          <div class="period-tab" id="ptab-week" onclick="setSummaryPeriod('week')">📆 สัปดาห์นี้</div>
+          <div class="period-tab" id="ptab-month" onclick="setSummaryPeriod('month')">🗓️ เดือนนี้</div>
+        </div>
+        <div class="sum-filters" id="sum-filters"></div>
+        <div class="sum-stats" id="sum-stats"></div>
+        <div class="pay-stats" id="pay-stats"></div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <span style="font-size:13px;font-weight:600">รายการออร์เดอร์</span>
+          <div style="display:flex;gap:6px">
+            <button class="dl-btn" onclick="downloadExcel()">⬇ Excel</button>
+            <button class="clear-btn" onclick="openClearHistoryModal()">🗑 ล้างประวัติ</button>
+          </div>
+        </div>
+        <div style="overflow-x:auto">
+          <table class="orders-tbl" id="orders-tbl">
+            <thead><tr>
+              <th>#</th><th>โต๊ะ</th><th>เมนู</th><th>จำนวน</th><th>ส่วนลด</th><th>แพลตฟอร์ม</th><th>ยอด</th><th>ชำระ</th><th>สถานะ</th>
+            </tr></thead>
+            <tbody id="orders-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- SETTINGS PAGE -->
+      <div class="page" id="page-settings">
+        <div style="font-size:16px;font-weight:700;margin-bottom:14px">ตั้งค่าระบบ</div>
+        <div class="set-section">
+          <h3>🍽️ เมนูหลัก</h3>
+          <div class="set-items" id="set-main-menus"></div>
+          <div class="add-form" style="margin-top:10px">
+            <input type="text" id="nm-name" placeholder="ชื่อเมนู">
+            <input type="number" id="nm-price" placeholder="ราคา" min="0">
+            <button class="add-btn" onclick="addMainMenu()">+ เพิ่ม</button>
+          </div>
+        </div>
+        <div class="set-section">
+          <h3>⭐ เมนูพิเศษ (Add-on)</h3>
+          <div class="set-items" id="set-special-menus"></div>
+          <div class="add-form" style="margin-top:10px">
+            <input type="text" id="ns-name" placeholder="ชื่อเมนูพิเศษ">
+            <input type="number" id="ns-price" placeholder="ราคา" min="0">
+            <button class="add-btn" onclick="addSpecialMenu()">+ เพิ่ม</button>
+          </div>
+        </div>
+        <div class="set-section">
+          <h3>💳 ช่องทางการชำระเงิน</h3>
+          <div class="set-items" id="set-pay-methods"></div>
+          <div class="add-form" style="margin-top:10px">
+            <input type="text" id="np-name" placeholder="ชื่อช่องทาง เช่น PromptPay">
+            <button class="add-btn" onclick="addPayMethod()">+ เพิ่ม</button>
+          </div>
+        </div>
+        <div class="set-section">
+          <h3>🏷️ รายการส่วนลด</h3>
+          <div class="set-items" id="set-discounts"></div>
+          <div class="add-form" style="margin-top:10px">
+            <input type="text" id="nd-name" placeholder="ชื่อส่วนลด">
+            <input type="number" id="nd-amt" placeholder="จำนวน ฿" min="0">
+            <select id="nd-type">
+              <option value="fixed">บาท (฿)</option>
+              <option value="percent">เปอร์เซ็นต์ (%)</option>
+            </select>
+            <button class="add-btn" onclick="addDiscount()">+ เพิ่ม</button>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /main -->
+
+    <!-- SIDEBAR -->
+    <div class="sidebar">
+      <div class="sdb-head">
+        <div>
+          <span class="sdb-title" id="sdb-title">เลือกโต๊ะก่อน</span>
+          <div id="sdb-timer-info" style="font-size:10px;color:var(--c-gray);margin-top:1px;display:none"></div>
+        </div>
+        <button onclick="clearOrder()" style="font-size:11px;color:var(--c-gray);cursor:pointer;border:none;background:none;text-decoration:underline">ล้าง</button>
+      </div>
+      <!-- Table action buttons (shown when table has pending order) -->
+      <div id="tbl-actions" style="display:none" class="tbl-actions">
+        <button class="tbl-act move" onclick="openMoveModal()">↔ ย้ายโต๊ะ</button>
+        <button class="tbl-act move" onclick="openSplitItemsModal()">⇄ ย้ายบางรายการ</button>
+        <button class="tbl-act merge" onclick="openMergeModal()">⊕ รวมโต๊ะ</button>
+        <button class="tbl-act danger" onclick="cancelTable()">✕ ยกเลิก</button>
+      </div>
+      <div class="sdb-body" id="sdb-body">
+        <div class="empty-msg">เลือกโต๊ะ แล้วเพิ่มเมนู</div>
+      </div>
+      <div class="sdb-foot">
+        <div class="disc-block">
+          <label>ส่วนลด</label>
+          <div class="disc-sel" id="disc-sel"></div>
+          <div class="disc-custom">
+            <input type="number" id="disc-custom-val" placeholder="ระบุ ฿" min="0" onchange="recalc()">
+            <span style="font-size:11px;color:var(--c-gray)">หรือระบุเอง</span>
+          </div>
+        </div>
+        <div style="margin-bottom:6px">
+          <div style="font-size:11px;color:var(--c-gray);font-weight:600;margin-bottom:5px">ช่องทางชำระ</div>
+          <div class="pay-grid" id="pay-grid"></div>
+          <button class="mini-btn" type="button" onclick="addSplitPaymentRow()">+ เพิ่มช่องทางจ่าย</button>
+          <div class="split-pay-list" id="split-pay-list"></div>
+          <div class="pay-hint" id="split-pay-hint">ถ้าไม่เพิ่มหลายช่องทาง ระบบจะใช้ช่องทางเดียวตามที่เลือก</div>
+        </div>
+        <div class="sum-row"><span>ราคารวม</span><span id="s-sub">฿0</span></div>
+        <div class="sum-row"><span>ส่วนลด</span><span id="s-disc" style="color:var(--c-red)">-฿0</span></div>
+        <div class="sum-row"><span>ค่าปรับ</span><span><input type="number" id="penalty-val" min="0" value="0" onchange="recalc()" style="width:90px;padding:4px 8px;border-radius:6px;border:1px solid var(--c-border);background:var(--c-bg);color:var(--color-text-primary)"></span></div>
+        <div class="sum-total"><span>ยอดสุทธิ</span><span id="s-total" style="color:var(--c-orange)">฿0</span></div>
+        <button class="act-btn btn-save" onclick="saveOrder()">💾 บันทึก (ค้างชำระ)</button>
+        <button class="act-btn btn-pay" id="btn-pay" onclick="confirmPay()">✓ ยืนยันชำระเงิน</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== MODALS ===== -->
+
+<!-- Edit menu/discount modal -->
+<div class="modal-overlay" id="modal">
+  <div class="modal">
+    <h3 id="modal-title">แก้ไขรายการ</h3>
+    <div class="mf-row"><label>ชื่อ</label><input id="m-name" type="text"></div>
+    <div class="mf-row"><label>ราคา / จำนวน</label><input id="m-price" type="number"></div>
+    <div class="mf-row" id="m-type-row" style="display:none"><label>ประเภท</label>
+      <select id="m-type"><option value="fixed">บาท (฿)</option><option value="percent">เปอร์เซ็นต์ (%)</option></select>
+    </div>
+    <div class="mbtn-row">
+      <button class="mbtn-cancel" onclick="closeModal()">ยกเลิก</button>
+      <button class="mbtn-ok" onclick="saveModal()">บันทึก</button>
+    </div>
+  </div>
+</div>
+
+<!-- Move table modal -->
+<div class="modal-overlay" id="modal-move">
+  <div class="modal">
+    <h3>↔ ย้ายโต๊ะ</h3>
+    <p style="font-size:12px;color:var(--c-gray);margin-bottom:12px">ย้ายออร์เดอร์ทั้งหมดไปยังโต๊ะที่เลือก</p>
+    <div class="mf-row">
+      <label>ย้ายจาก</label>
+      <input type="text" id="move-from-display" readonly style="background:var(--c-bg2)">
+    </div>
+    <div class="mf-row">
+      <label>ย้ายไปโต๊ะ</label>
+      <select id="move-target-sel"></select>
+    </div>
+    <div class="mbtn-row">
+      <button class="mbtn-cancel" onclick="closeAllModals()">ยกเลิก</button>
+      <button class="mbtn-ok" onclick="doMoveTable()">✓ ย้ายโต๊ะ</button>
+    </div>
+  </div>
+</div>
+
+<!-- Merge table modal -->
+<div class="modal-overlay" id="modal-merge">
+  <div class="modal">
+    <h3>⊕ รวมโต๊ะ</h3>
+    <p style="font-size:12px;color:var(--c-gray);margin-bottom:12px">รวมออร์เดอร์จากโต๊ะที่เลือกเข้ามาที่โต๊ะปัจจุบัน</p>
+    <div class="mf-row">
+      <label>โต๊ะปัจจุบัน</label>
+      <input type="text" id="merge-current-display" readonly style="background:var(--c-bg2)">
+    </div>
+    <div class="mf-row">
+      <label>รวมจากโต๊ะ</label>
+      <select id="merge-source-sel"></select>
+    </div>
+    <div class="mbtn-row">
+      <button class="mbtn-cancel" onclick="closeAllModals()">ยกเลิก</button>
+      <button class="mbtn-ok" onclick="doMergeTable()">✓ รวมโต๊ะ</button>
+    </div>
+  </div>
+</div>
+
+<!-- Clear history confirm modal -->
+<div class="modal-overlay" id="modal-clear">
+  <div class="modal">
+    <div class="confirm-icon">🗑️</div>
+    <h3 style="text-align:center">ล้างประวัติการขาย?</h3>
+    <p class="confirm-msg">การกระทำนี้จะลบ<strong>ออร์เดอร์ที่ชำระแล้ว</strong>ทั้งหมดออกจากระบบ<br>และไม่สามารถกู้คืนได้</p>
+    <div id="clear-period-info" style="font-size:12px;color:var(--c-orange);text-align:center;font-weight:600;margin-top:6px"></div>
+    <div class="mbtn-row" style="margin-top:16px">
+      <button class="mbtn-cancel" onclick="closeAllModals()">ยกเลิก</button>
+      <button class="mbtn-danger" onclick="doClearHistory()">🗑 ยืนยันลบ</button>
+    </div>
+  </div>
+</div>
+
+<!-- Split item modal -->
+<div class="modal-overlay" id="modal-split-items">
+  <div class="modal">
+    <h3>⇄ ย้ายบางรายการ / แยกบิล</h3>
+    <p style="font-size:12px;color:var(--c-gray);margin-bottom:12px">เลือกเมนูและจำนวนที่จะย้ายไปอีกโต๊ะ เพื่อแยกบิลหรือย้ายบางรายการ</p>
+    <div class="mf-row">
+      <label>จากโต๊ะ</label>
+      <input type="text" id="split-from-display" readonly style="background:var(--c-bg2)">
+    </div>
+    <div class="mf-row">
+      <label>ไปโต๊ะ</label>
+      <select id="split-target-sel"></select>
+    </div>
+    <div class="mf-row">
+      <label>รายการ</label>
+      <div id="split-items-list" style="display:flex;flex-direction:column;gap:6px;max-height:220px;overflow:auto"></div>
+    </div>
+    <div class="mbtn-row">
+      <button class="mbtn-cancel" onclick="closeAllModals()">ยกเลิก</button>
+      <button class="mbtn-ok" onclick="doSplitItems()">✓ ยืนยัน</button>
+    </div>
+  </div>
+</div>
+
+<!-- Void bill confirm modal -->
+<div class="modal-overlay" id="modal-void">
+  <div class="modal">
+    <div class="confirm-icon">🚫</div>
+    <h3 style="text-align:center">Void Bill?</h3>
+    <div id="void-bill-info" class="modal-info-box"></div>
+    <p class="confirm-msg" style="margin-top:6px">การ Void จะยกเลิกการรับรู้รายได้ของบิลนี้<br>และไม่สามารถกู้คืนได้</p>
+    <div class="mf-row" style="margin-top:10px">
+      <label>เหตุผลในการ Void</label>
+      <input id="void-reason" type="text" placeholder="เช่น ชำระผิดจำนวน, ลูกค้าขอยกเลิก">
+    </div>
+    <div class="mbtn-row">
+      <button class="mbtn-cancel" onclick="closeAllModals()">ยกเลิก</button>
+      <button class="mbtn-danger" onclick="doVoidBill()">🚫 ยืนยัน Void</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ===== CONSTANTS =====
+const DINE_DURATION = 90 * 60 * 1000; // 1 hr 30 min in ms
+const _now = Date.now();
+
+// ===== STATE =====
+let mainMenus = [
+  {id:'m1',name:'Buffet 329',price:329,cat:'main'},
+  {id:'m2',name:'Buffet Promotion 299',price:299,cat:'main'},
+  {id:'m3',name:'Promotion 4 Pay 3',price:987,cat:'main'},
+  {id:'m4',name:'Dookki Daytime',price:199,cat:'main'},
+  {id:'m5',name:'ราคาเด็ก',price:149,cat:'main'},
+];
+let specialMenus = [
+  {id:'s1',name:'Fondue Cheese',price:120,cat:'special'},
+  {id:'s2',name:'Ice Cream',price:29,cat:'special'},
+];
+let discounts = [
+  {id:'d1',name:'วันเกิด 20%',amt:20,type:'percent'},
+  {id:'d2',name:'รีวิว 30฿',amt:30,type:'fixed'},
+  {id:'d3',name:'Line OA',amt:50,type:'fixed'},
+];
+let payMethods = [
+  {id:'p1',name:'QR Payment'},
+  {id:'p2',name:'Master Card'},
+  {id:'p3',name:'Visa'},
+  {id:'p4',name:'เงินสด'},
+];
+
+// allOrders: paid orders are historical, pending orders = active tables
+// Added: timestamp (when created), openTime (when table opened), discId (for restoring discount)
+let allOrders = [
+  {id:'o1',table:13,items:[{id:'m2',name:'Buffet Promotion 299',price:299,qty:2,cat:'main'}],pay:'QR Payment',discId:null,discName:'',discAmt:0,total:598,status:'จ่ายแล้ว',timestamp:_now-5*3600000,openTime:_now-7*3600000},
+  {id:'o2',table:12,items:[{id:'m1',name:'Buffet 329',price:329,qty:3,cat:'main'}],pay:'Master Card',discId:null,discName:'',discAmt:0,total:987,status:'จ่ายแล้ว',timestamp:_now-4.5*3600000,openTime:_now-6.5*3600000},
+  {id:'o3',table:2,items:[{id:'m1',name:'Buffet 329',price:329,qty:2,cat:'main'}],pay:'QR Payment',discId:'d2',discName:'รีวิว 30฿',discAmt:30,total:628,status:'จ่ายแล้ว',timestamp:_now-4*3600000,openTime:_now-6*3600000},
+  {id:'o4',table:5,items:[{id:'m1',name:'Buffet 329',price:329,qty:3,cat:'main'}],pay:'QR Payment',discId:null,discName:'',discAmt:0,total:987,status:'จ่ายแล้ว',timestamp:_now-3.5*3600000,openTime:_now-5.5*3600000},
+  {id:'o5',table:9,items:[{id:'m1',name:'Buffet 329',price:329,qty:2,cat:'main'}],pay:'QR Payment',discId:null,discName:'',discAmt:0,total:658,status:'จ่ายแล้ว',timestamp:_now-3*3600000,openTime:_now-5*3600000},
+  {id:'o6',table:14,items:[{id:'m1',name:'Buffet 329',price:329,qty:3,cat:'main'}],pay:'Visa',discId:null,discName:'',discAmt:0,total:987,status:'จ่ายแล้ว',timestamp:_now-2.5*3600000,openTime:_now-4.5*3600000},
+  {id:'o7',table:1,items:[{id:'m2',name:'Buffet Promotion 299',price:299,qty:4,cat:'main'}],pay:'Master Card',discId:null,discName:'',discAmt:0,total:1196,status:'จ่ายแล้ว',timestamp:_now-2*3600000,openTime:_now-4*3600000},
+  {id:'o8',table:3,items:[{id:'m4',name:'Dookki Daytime',price:199,qty:3,cat:'main'}],pay:'QR Payment',discId:null,discName:'',discAmt:0,total:597,status:'จ่ายแล้ว',timestamp:_now-1.5*3600000,openTime:_now-3.5*3600000},
+  {id:'o9',table:18,items:[{id:'m4',name:'Dookki Daytime',price:199,qty:1,cat:'main'}],pay:'Master Card',discId:null,discName:'',discAmt:0,total:199,status:'จ่ายแล้ว',timestamp:_now-1*3600000,openTime:_now-3*3600000},
+  {id:'o10',table:21,items:[{id:'m2',name:'Buffet Promotion 299',price:299,qty:2,cat:'main'}],pay:'Master Card',discId:null,discName:'',discAmt:0,total:598,status:'จ่ายแล้ว',timestamp:_now-0.5*3600000,openTime:_now-2.5*3600000},
+];
+
+let selectedTable = null;
+let currentOrder = [];
+let selectedPay = 'QR Payment';
+let selectedDiscId = null;
+let customDisc = 0;
+let currentMenuCat = 'all';
+let modalCtx = null;
+let oidCounter = 20;
+let summaryPeriod = 'day';
+let summaryStatusFilter = 'all';
+let voidOrderId = null;
+let splitPayments = [];
+const ORDERS_STORAGE_KEY = 'buffet_pos_v4_allOrders';
+
+// ===== UTILS =====
+function uid(){return 'id_'+(++oidCounter)}
+function fmt(n){return '฿'+(Math.round(n)||0).toLocaleString()}
+function syncOidCounter(){
+  const maxId = allOrders.reduce((max,o)=>{
+    const n = String(o.id||'').match(/^o(\d+)$/);
+    return n ? Math.max(max, parseInt(n[1],10)) : max;
+  }, 0);
+  oidCounter = Math.max(oidCounter, maxId);
+}
+// ===== FIREBASE SAVE / LOAD (แทน localStorage) =====
+async function saveOrders(){
+  if(!window._fbReady) {
+    // fallback localStorage ถ้า Firebase ยังไม่พร้อม
+    try{ localStorage.setItem(ORDERS_STORAGE_KEY, JSON.stringify(allOrders)); }catch(e){}
+    return;
+  }
+  const { collection, doc, setDoc, deleteDoc } = window._fbModules;
+  const db = window._db;
+  try {
+    // Save/update ทุก order ใน allOrders ไปยัง Firestore
+    for(const o of allOrders){
+      await setDoc(doc(db, "orders", String(o.id)), o);
+    }
+  } catch(err){
+    console.warn('Firebase saveOrders error:', err);
+  }
+}
+
+// หรือบันทึก order เดี่ยว (เร็วกว่า ใช้กับ confirmPay/saveOrder)
+async function saveOneOrder(o){
+  if(!window._fbReady) { saveOrders(); return; }
+  const { doc, setDoc } = window._fbModules;
+  try {
+    await setDoc(doc(window._db, "orders", String(o.id)), o);
+  } catch(err){
+    console.warn('Firebase saveOneOrder error:', err);
+  }
+}
+
+async function deleteOneOrder(id){
+  if(!window._fbReady) return;
+  const { doc, deleteDoc } = window._fbModules;
+  try {
+    await deleteDoc(doc(window._db, "orders", String(id)));
+  } catch(err){
+    console.warn('Firebase deleteOneOrder error:', err);
+  }
+}
+
+function loadOrders(){
+  // ไม่ต้องทำอะไรแล้ว — Firebase onSnapshot จะ sync allOrders ให้อัตโนมัติ
+  // เก็บฟังก์ชันนี้ไว้เพื่อไม่ให้ error จากการเรียก init
+}
+function getPenaltyValue(){
+  const el = document.getElementById('penalty-val');
+  return el ? (parseInt(el.value,10) || 0) : 0;
+}
+function resetPaymentForm(){
+  splitPayments = [];
+  renderSplitPayments();
+}
+function renderSplitPayments(){
+  const wrap = document.getElementById('split-pay-list');
+  const hint = document.getElementById('split-pay-hint');
+  if(!wrap) return;
+  if(!splitPayments.length){
+    wrap.innerHTML = '';
+    if(hint) hint.textContent = 'ถ้าไม่เพิ่มหลายช่องทาง ระบบจะใช้ช่องทางเดียวตามที่เลือก';
+    return;
+  }
+  wrap.innerHTML = splitPayments.map((row,idx)=>`
+    <div class="split-pay-row">
+      <select onchange="updateSplitPaymentMethod(${idx}, this.value)">${payMethods.map(p=>`<option value="${p.name}" ${p.name===row.method?'selected':''}>${p.name}</option>`).join('')}</select>
+      <input type="number" min="0" value="${row.amount||''}" onchange="updateSplitPaymentAmount(${idx}, this.value)" placeholder="ยอดเงิน">
+      <button type="button" onclick="removeSplitPaymentRow(${idx})">×</button>
+    </div>`).join('');
+  const total = splitPayments.reduce((sum,row)=>sum+(parseInt(row.amount,10)||0),0);
+  if(hint) hint.textContent = `ยอดรวมหลายช่องทาง ${fmt(total)}`;
+}
+function addSplitPaymentRow(){
+  splitPayments.push({method:selectedPay||payMethods[0].name, amount:''});
+  renderSplitPayments();
+}
+function updateSplitPaymentMethod(idx, value){
+  if(!splitPayments[idx]) return;
+  splitPayments[idx].method = value;
+}
+function updateSplitPaymentAmount(idx, value){
+  if(!splitPayments[idx]) return;
+  splitPayments[idx].amount = parseInt(value,10) || 0;
+  renderSplitPayments();
+}
+function removeSplitPaymentRow(idx){
+  splitPayments.splice(idx,1);
+  renderSplitPayments();
+}
+function getPaymentPayload(total){
+  const rows = splitPayments
+    .map(row=>({method:row.method, amount:parseInt(row.amount,10)||0}))
+    .filter(row=>row.method && row.amount>0);
+  if(!rows.length){
+    return {payText:selectedPay, paymentBreakdown:[{method:selectedPay, amount:total}]};
+  }
+  const paid = rows.reduce((sum,row)=>sum+row.amount,0);
+  if(paid!==total){
+    alert(`ยอดชำระหลายช่องทางต้องเท่ากับยอดสุทธิ ${fmt(total)}`);
+    return null;
+  }
+  return {payText:rows.map(row=>`${row.method} ${fmt(row.amount)}`).join(' + '), paymentBreakdown:rows};
+}
+function updatePendingFromCurrentOrder(pending){
+  if(!pending || !currentOrder.length) return;
+  const sub=currentOrder.reduce((a,x)=>a+x.price*x.qty,0);
+  const d=selectedDiscId?discounts.find(x=>x.id===selectedDiscId):null;
+  const discAmt=d?(d.type==='percent'?Math.round(sub*d.amt/100):d.amt):customDisc;
+  pending.items=currentOrder.map(x=>({id:x.id,name:x.name,price:x.price,qty:x.qty,cat:x.cat||'main'}));
+  pending.discId=selectedDiscId;
+  pending.discName=d?d.name:'';
+  pending.discAmt=discAmt;
+  pending.penalty=getPenaltyValue();
+  pending.total=Math.max(0,sub-discAmt+pending.penalty);
+}
+
+// ===== TABLE STATE =====
+// Table is "occupied" only if it has a pending (ยังไม่จ่าย) order
+function tableState(){
+  const s={};
+  allOrders.forEach(o=>{
+    if(o.status==='ยังไม่จ่าย') s[o.table]='occupied';
+  });
+  return s;
+}
+
+function getPendingOrder(tableNo){
+  return allOrders.find(o=>o.table===tableNo && o.status==='ยังไม่จ่าย');
+}
+
+// ===== CLOCK =====
+function updateClock(){
+  const now=new Date();
+  document.getElementById('clock').textContent=now.toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'})+' น. '+now.toLocaleDateString('th-TH',{day:'numeric',month:'short'});
+}
+setInterval(updateClock,1000); updateClock();
+
+// ===== NAV =====
+function navTo(page,el){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nav-tab').forEach(t=>t.classList.remove('active'));
+  document.getElementById('page-'+page).classList.add('active');
+  el.classList.add('active');
+  if(page==='summary')renderSummary();
+  if(page==='settings')renderSettings();
+}
+
+// ===== TABLE MAP =====
+function fmtCountdown(openTime){
+  if(!openTime) return '';
+  const elapsed = Date.now() - openTime;
+  const remaining = Math.max(0, DINE_DURATION - elapsed);
+  const mins = Math.floor(remaining / 60000);
+  const secs = Math.floor((remaining % 60000) / 1000);
+  return {str: mins+':'+String(secs).padStart(2,'0'), remaining};
+}
+
+function renderTmap(){
+  const ts=tableState();
+  const g=document.getElementById('tmap');
+  g.innerHTML='';
+  for(let i=1;i<=26;i++){
+    const st=ts[i]||'empty';
+    const sel=selectedTable===i?' selected':'';
+    const pending=getPendingOrder(i);
+    let timerHtml='';
+    let timeUpClass='';
+    if(st==='occupied' && pending && pending.openTime){
+      const {str, remaining}=fmtCountdown(pending.openTime);
+      const isWarn=remaining<10*60000;
+      timeUpClass=remaining===0?' time-up':'';
+      timerHtml=`<div class="tmr${isWarn?' tmr-warn':''}" id="tmr-${i}">${str}</div>`;
+    }
+    g.innerHTML+=`<div class="tbl ${st}${timeUpClass}${sel}" id="tbl-${i}" onclick="selTable(${i})">
+      <div class="tnum">T${i}</div>
+      ${timerHtml}
+      <div class="tstat">${st==='occupied'?'กำลังใช้':'ว่าง'}</div>
+    </div>`;
+  }
+}
+
+// Lightweight timer update (no full re-render)
+function updateTableTimers(){
+  const ts=tableState();
+  for(let i=1;i<=26;i++){
+    if(ts[i]!=='occupied') continue;
+    const pending=getPendingOrder(i);
+    const el=document.getElementById('tmr-'+i);
+    const tbl=document.getElementById('tbl-'+i);
+    if(!pending||!pending.openTime||!el) continue;
+    const {str,remaining}=fmtCountdown(pending.openTime);
+    el.textContent=str;
+    if(remaining<10*60000){ el.classList.add('tmr-warn'); }
+    if(remaining===0 && tbl){ tbl.classList.add('time-up'); }
+  }
+  // Update sidebar timer info
+  if(selectedTable){
+    const p=getPendingOrder(selectedTable);
+    const timerEl=document.getElementById('sdb-timer-info');
+    if(p && p.openTime){
+      const {str,remaining}=fmtCountdown(p.openTime);
+      timerEl.style.display='block';
+      timerEl.style.color=remaining<10*60000?'var(--c-red)':'var(--c-gray)';
+      timerEl.textContent='⏱ เหลือเวลา '+str+' น.';
+    } else {
+      timerEl.style.display='none';
+    }
+  }
+}
+setInterval(updateTableTimers,1000);
+
+// ===== SELECT TABLE =====
+function selTable(n){
+  selectedTable=n;
+  resetPaymentForm();
+  // Load existing pending order into currentOrder
+  const pending=getPendingOrder(n);
+  if(pending){
+    currentOrder=pending.items.map(x=>({...x}));
+    selectedDiscId=pending.discId||null;
+    const penaltyEl=document.getElementById('penalty-val');
+    if(penaltyEl) penaltyEl.value=String(pending.penalty||0);
+  } else {
+    currentOrder=[];
+    selectedDiscId=null;
+    const penaltyEl=document.getElementById('penalty-val');
+    if(penaltyEl) penaltyEl.value='0';
+  }
+  customDisc=0;
+  document.getElementById('disc-custom-val').value='';
+  renderTmap();
+  renderOrderSidebar();
+  renderDiscChips();
+  updateSidebarHead();
+}
+
+function updateSidebarHead(){
+  if(!selectedTable){
+    document.getElementById('sdb-title').textContent='เลือกโต๊ะก่อน';
+    document.getElementById('sdb-timer-info').style.display='none';
+    document.getElementById('tbl-actions').style.display='none';
+    return;
+  }
+  document.getElementById('sdb-title').textContent='โต๊ะ '+selectedTable;
+  const pending=getPendingOrder(selectedTable);
+  const actEl=document.getElementById('tbl-actions');
+  actEl.style.display=pending?'flex':'none';
+  const timerEl=document.getElementById('sdb-timer-info');
+  if(pending && pending.openTime){
+    const {str,remaining}=fmtCountdown(pending.openTime);
+    timerEl.style.display='block';
+    timerEl.style.color=remaining<10*60000?'var(--c-red)':'var(--c-gray)';
+    timerEl.textContent='⏱ เหลือเวลา '+str+' น.';
+  } else {
+    timerEl.style.display='none';
+  }
+}
+
+// ===== MENU =====
+function allMenus(){return [...mainMenus,...specialMenus]}
+function renderMenuCats(){
+  const cats=[{id:'all',label:'ทั้งหมด'},{id:'main',label:'เมนูหลัก'},{id:'special',label:'เมนูพิเศษ'}];
+  document.getElementById('mcats').innerHTML=cats.map(c=>`<div class="mcat${currentMenuCat===c.id?' active':''}" onclick="filterMenuCat('${c.id}')">${c.label}</div>`).join('');
+}
+function filterMenuCat(c){currentMenuCat=c;renderMenuCats();renderMenuGrid();}
+function renderMenuGrid(){
+  const items=allMenus().filter(m=>currentMenuCat==='all'||m.cat===currentMenuCat);
+  document.getElementById('mgrid').innerHTML=items.map(m=>`
+    <div class="mcrd" onclick="addItem('${m.id}')">
+      <div class="mn">${m.name}</div>
+      <div class="mp">${fmt(m.price)}</div>
+      <span class="badge ${m.cat==='main'?'bdg-main':'bdg-special'}">${m.cat==='main'?'หลัก':'พิเศษ'}</span>
+    </div>`).join('');
+}
+
+// ===== ORDER SIDEBAR =====
+function addItem(id){
+  if(!selectedTable){alert('กรุณาเลือกโต๊ะก่อน');return;}
+  const m=allMenus().find(x=>x.id===id);
+  if(!m)return;
+  // Match by menu id OR by name (to handle loaded orders)
+  const ex=currentOrder.find(x=>x.id===id||x.name===m.name);
+  if(ex)ex.qty++;
+  else currentOrder.push({...m,qty:1});
+  renderOrderSidebar();
+}
+function changeQty(id,d){
+  const i=currentOrder.findIndex(x=>x.id===id);
+  if(i<0)return;
+  currentOrder[i].qty+=d;
+  if(currentOrder[i].qty<=0)currentOrder.splice(i,1);
+  renderOrderSidebar();
+}
+function renderOrderSidebar(){
+  const el=document.getElementById('sdb-body');
+  if(!currentOrder.length){el.innerHTML='<div class="empty-msg">เพิ่มเมนูจากรายการ</div>';recalc();return;}
+  el.innerHTML=currentOrder.map(x=>`
+    <div class="oi">
+      <div class="oi-name">${x.name}</div>
+      <div class="qc">
+        <div class="qb" onclick="changeQty('${x.id}',-1)">−</div>
+        <span style="font-size:13px;min-width:16px;text-align:center">${x.qty}</span>
+        <div class="qb" onclick="changeQty('${x.id}',1)">+</div>
+      </div>
+      <div class="oi-price">${fmt(x.price*x.qty)}</div>
+    </div>`).join('');
+  recalc();
+}
+function renderDiscChips(){
+  document.getElementById('disc-sel').innerHTML=discounts.map(d=>`
+    <div class="disc-chip${selectedDiscId===d.id?' active':''}" onclick="toggleDisc('${d.id}')">${d.name}</div>`).join('');
+}
+function toggleDisc(id){
+  selectedDiscId=selectedDiscId===id?null:id;
+  document.getElementById('disc-custom-val').value='';
+  customDisc=0;
+  renderDiscChips();recalc();
+}
+function recalc(){
+  renderDiscChips();
+  const sub=currentOrder.reduce((a,x)=>a+x.price*x.qty,0);
+  let disc=0;
+  if(selectedDiscId){
+    const d=discounts.find(x=>x.id===selectedDiscId);
+    if(d)disc=d.type==='percent'?Math.round(sub*d.amt/100):d.amt;
+  } else {
+    disc=parseInt(document.getElementById('disc-custom-val').value)||0;
+  }
+  customDisc=disc;
+  const penalty=getPenaltyValue();
+  const total=Math.max(0,sub-disc+penalty);
+  document.getElementById('s-sub').textContent=fmt(sub);
+  document.getElementById('s-disc').textContent='-'+fmt(disc);
+  document.getElementById('s-total').textContent=fmt(total);
+}
+function renderPayGrid(){
+  const grid=document.getElementById('pay-grid');
+  if(!grid) return;
+  grid.innerHTML=payMethods.map(p=>`
+    <div class="pay-btn${selectedPay===p.name?' active':''}" onclick="setPay('${p.name}',this)">${p.name}</div>`).join('');
+}
+function setPay(m,el){
+  selectedPay=m;
+  document.querySelectorAll('.pay-btn').forEach(b=>b.classList.remove('active'));
+  el.classList.add('active');
+}
+function clearOrder(){
+  currentOrder=[];selectedDiscId=null;customDisc=0;
+  resetPaymentForm();
+  const penaltyEl=document.getElementById('penalty-val');
+  if(penaltyEl) penaltyEl.value='0';
+  renderOrderSidebar();
+}
+
+// ===== SAVE ORDER =====
+function saveOrder(){
+  if(!selectedTable||!currentOrder.length){alert('กรุณาเลือกโต๊ะและเพิ่มเมนู');return;}
+  const now=Date.now();
+  const sub=currentOrder.reduce((a,x)=>a+x.price*x.qty,0);
+  const d=selectedDiscId?discounts.find(x=>x.id===selectedDiscId):null;
+  const discAmt=d?(d.type==='percent'?Math.round(sub*d.amt/100):d.amt):customDisc;
+  const discName=d?d.name:'';
+  const penalty=getPenaltyValue();
+  const total=Math.max(0,sub-discAmt+penalty);
+  const items=currentOrder.map(x=>({id:x.id,name:x.name,price:x.price,qty:x.qty,cat:x.cat||'main'}));
+
+  const pending=getPendingOrder(selectedTable);
+  if(pending){
+    // Update existing pending order
+    pending.items=items;
+    pending.discId=selectedDiscId;
+    pending.discName=discName;
+    pending.discAmt=discAmt;
+    pending.penalty=penalty;
+    pending.total=total;
+    pending.timestamp=now;
+  } else {
+    // Create new order + start timer
+    allOrders.push({
+      id:uid(),table:selectedTable,items,pay:'',
+      discId:selectedDiscId,discName,discAmt,penalty,total,
+      status:'ยังไม่จ่าย',timestamp:now,openTime:now
+    });
+  }
+  clearOrder();
+  saveOrders();
+  renderTmap();
+  updateSidebarHead();
+  alert(`💾 บันทึกออร์เดอร์โต๊ะ ${selectedTable} เรียบร้อย`);
+}
+
+// ===== CONFIRM PAY =====
+function confirmPay(){
+  if(!selectedTable){alert('กรุณาเลือกโต๊ะ');return;}
+  const pending=getPendingOrder(selectedTable);
+  // Must have either currentOrder items OR an existing pending order
+  if(!pending && !currentOrder.length){alert('กรุณาเพิ่มเมนูก่อนชำระเงิน');return;}
+
+  const now=Date.now();
+  const sub=currentOrder.reduce((a,x)=>a+x.price*x.qty,0);
+  const d=selectedDiscId?discounts.find(x=>x.id===selectedDiscId):null;
+  const discAmt=d?(d.type==='percent'?Math.round(sub*d.amt/100):d.amt):customDisc;
+  const discName=d?d.name:'';
+  const penalty=getPenaltyValue();
+  const items=currentOrder.length
+    ? currentOrder.map(x=>({id:x.id,name:x.name,price:x.price,qty:x.qty,cat:x.cat||'main'}))
+    : (pending ? pending.items : []);
+  const itemSub=items.reduce((a,x)=>a+x.price*x.qty,0);
+  const itemDisc=d?(d.type==='percent'?Math.round(itemSub*d.amt/100):d.amt):(pending&&!currentOrder.length?pending.discAmt:discAmt);
+  const itemPenalty=currentOrder.length ? penalty : (pending?.penalty||0);
+  const total=Math.max(0,itemSub-itemDisc+itemPenalty);
+  const paymentPayload=getPaymentPayload(total);
+  if(!paymentPayload) return;
+
+  if(pending){
+    // Update existing pending order → mark as paid
+    pending.items=items;
+    pending.pay=paymentPayload.payText;
+    pending.paymentBreakdown=paymentPayload.paymentBreakdown;
+    pending.discId=selectedDiscId||(currentOrder.length?null:pending.discId);
+    pending.discName=discName||(currentOrder.length?'':pending.discName);
+    pending.discAmt=currentOrder.length?itemDisc:pending.discAmt;
+    pending.penalty=itemPenalty;
+    pending.total=total;
+    pending.status='จ่ายแล้ว';
+    pending.paidAt=now;
+    const paidTotal=pending.total;
+    clearOrder();
+    saveOrders();
+    renderTmap();
+    updateSidebarHead();
+    alert(`✅ ชำระเงินโต๊ะ ${selectedTable} ${fmt(paidTotal)} (${selectedPay}) เรียบร้อย!`);
+  } else {
+    // No existing pending, pay directly
+    allOrders.push({
+      id:uid(),table:selectedTable,items,pay:paymentPayload.payText,
+      paymentBreakdown:paymentPayload.paymentBreakdown,
+      discId:selectedDiscId,discName,discAmt:itemDisc,penalty:itemPenalty,total,
+      status:'จ่ายแล้ว',timestamp:now,openTime:now,paidAt:now
+    });
+    clearOrder();
+    saveOrders();
+    renderTmap();
+    updateSidebarHead();
+    alert(`✅ ชำระเงินโต๊ะ ${selectedTable} ${fmt(total)} (${selectedPay}) เรียบร้อย!`);
+  }
+}
+
+// ===== CANCEL TABLE =====
+function cancelTable(){
+  if(!selectedTable) return;
+  const pending=getPendingOrder(selectedTable);
+  if(!pending){alert('ไม่มีออร์เดอร์ค้างในโต๊ะนี้');return;}
+  if(!confirm(`⚠️ ยืนยันยกเลิกโต๊ะ ${selectedTable}?\nออร์เดอร์ทั้งหมดจะถูกลบและไม่สามารถกู้คืนได้`)) return;
+  allOrders=allOrders.filter(o=>!(o.table===selectedTable && o.status==='ยังไม่จ่าย'));
+  clearOrder();
+  saveOrders();
+  renderTmap();
+  updateSidebarHead();
+  alert(`❌ ยกเลิกโต๊ะ ${selectedTable} เรียบร้อย`);
+}
+
+function allocateDiscountPortion(sourceOrder, movedSub, sourceSub){
+  if(!sourceOrder || !sourceOrder.discAmt || !sourceSub) return 0;
+  return Math.min(sourceOrder.discAmt, Math.round((sourceOrder.discAmt * movedSub) / sourceSub));
+}
+
+function openSplitItemsModal(){
+  if(!selectedTable) return;
+  const pending=getPendingOrder(selectedTable);
+  if(!pending){alert('ไม่มีออร์เดอร์ค้างในโต๊ะนี้');return;}
+  updatePendingFromCurrentOrder(pending);
+  const ts=tableState();
+  const targetTables=[];
+  for(let i=1;i<=26;i++){
+    if(i!==selectedTable && (!ts[i] || ts[i]==='occupied')) targetTables.push(i);
+  }
+  document.getElementById('split-from-display').value=`โต๊ะ ${selectedTable}`;
+  document.getElementById('split-target-sel').innerHTML=targetTables.map(t=>`<option value="${t}">โต๊ะ ${t}${ts[t]==='occupied'?' (รวมกับโต๊ะเดิม)':''}</option>`).join('');
+  document.getElementById('split-items-list').innerHTML=pending.items.map((item,idx)=>`
+    <div style="display:grid;grid-template-columns:1fr 74px;gap:8px;align-items:center">
+      <div style="font-size:12px">${item.name} <span style="color:var(--c-gray)">คงเหลือ ${item.qty}</span></div>
+      <input type="number" min="0" max="${item.qty}" value="0" data-split-idx="${idx}" style="padding:6px 8px;border-radius:8px;border:1px solid var(--c-border);background:var(--c-bg);color:var(--color-text-primary)">
+    </div>`).join('');
+  document.getElementById('modal-split-items').style.display='flex';
+}
+
+function doSplitItems(){
+  const target=parseInt(document.getElementById('split-target-sel').value,10);
+  const sourcePending=getPendingOrder(selectedTable);
+  if(!target || !selectedTable || !sourcePending) return;
+  const qtyInputs=[...document.querySelectorAll('#split-items-list [data-split-idx]')];
+  const moves=[];
+  qtyInputs.forEach(input=>{
+    const idx=parseInt(input.getAttribute('data-split-idx'),10);
+    const qty=Math.min(parseInt(input.value,10)||0, sourcePending.items[idx].qty);
+    if(qty>0){
+      const item=sourcePending.items[idx];
+      moves.push({...item, qty});
+    }
+  });
+  if(!moves.length){alert('กรุณาเลือกรายการที่จะย้าย');return;}
+  const sourceSub=sourcePending.items.reduce((sum,item)=>sum+(item.price*item.qty),0);
+  const movedSub=moves.reduce((sum,item)=>sum+(item.price*item.qty),0);
+  const movedDisc=allocateDiscountPortion(sourcePending, movedSub, sourceSub);
+  const movedPenalty=sourcePending.penalty ? Math.min(sourcePending.penalty, Math.round((sourcePending.penalty * movedSub) / sourceSub)) : 0;
+  moves.forEach(move=>{
+    const src=sourcePending.items.find(item=>item.name===move.name && item.price===move.price);
+    if(src) src.qty -= move.qty;
+  });
+  sourcePending.items = sourcePending.items.filter(item=>item.qty>0);
+  sourcePending.discAmt = Math.max(0, (sourcePending.discAmt||0) - movedDisc);
+  sourcePending.penalty = Math.max(0, (sourcePending.penalty||0) - movedPenalty);
+  const sourceNewSub=sourcePending.items.reduce((sum,item)=>sum+(item.price*item.qty),0);
+  sourcePending.total=Math.max(0,sourceNewSub-sourcePending.discAmt+(sourcePending.penalty||0));
+
+  const targetPending=getPendingOrder(target);
+  if(targetPending){
+    moves.forEach(move=>{
+      const ex=targetPending.items.find(item=>item.name===move.name && item.price===move.price);
+      if(ex) ex.qty += move.qty;
+      else targetPending.items.push({...move});
+    });
+    targetPending.discAmt=(targetPending.discAmt||0)+movedDisc;
+    targetPending.penalty=(targetPending.penalty||0)+movedPenalty;
+    const targetSub=targetPending.items.reduce((sum,item)=>sum+(item.price*item.qty),0);
+    targetPending.total=Math.max(0,targetSub-(targetPending.discAmt||0)+(targetPending.penalty||0));
+  } else {
+    allOrders.push({
+      id:uid(),
+      table:target,
+      items:moves.map(item=>({...item})),
+      pay:'',
+      discId:null,
+      discName:movedDisc?'แยกจากโต๊ะ '+selectedTable:'',
+      discAmt:movedDisc,
+      penalty:movedPenalty,
+      total:Math.max(0,movedSub-movedDisc+movedPenalty),
+      status:'ยังไม่จ่าย',
+      timestamp:Date.now(),
+      openTime:sourcePending.openTime||Date.now()
+    });
+  }
+  if(!sourcePending.items.length){
+    allOrders=allOrders.filter(o=>o!==sourcePending);
+    currentOrder=[];
+  } else {
+    currentOrder=sourcePending.items.map(item=>({...item}));
+  }
+  saveOrders();
+  closeAllModals();
+  renderTmap();
+  renderOrderSidebar();
+  updateSidebarHead();
+  alert(`⇄ ย้ายบางรายการจากโต๊ะ ${selectedTable} ไปโต๊ะ ${target} เรียบร้อย`);
+}
+
+// ===== MOVE TABLE =====
+function openMoveModal(){
+  if(!selectedTable) return;
+  const ts=tableState();
+  const emptyTables=[];
+  for(let i=1;i<=26;i++){
+    if(i!==selectedTable && !ts[i]) emptyTables.push(i);
+  }
+  if(!emptyTables.length){alert('ไม่มีโต๊ะว่างสำหรับย้าย');return;}
+  document.getElementById('move-from-display').value=`โต๊ะ ${selectedTable}`;
+  document.getElementById('move-target-sel').innerHTML=emptyTables.map(t=>`<option value="${t}">โต๊ะ ${t}</option>`).join('');
+  document.getElementById('modal-move').style.display='flex';
+}
+function doMoveTable(){
+  const target=parseInt(document.getElementById('move-target-sel').value);
+  if(!target || !selectedTable) return;
+  const ts=tableState();
+  if(ts[target]==='occupied'){alert(`โต๊ะ ${target} ไม่ว่าง`);return;}
+  updatePendingFromCurrentOrder(getPendingOrder(selectedTable));
+  allOrders.forEach(o=>{
+    if(o.table===selectedTable && o.status==='ยังไม่จ่าย') o.table=target;
+  });
+  const prev=selectedTable;
+  selectedTable=target;
+  closeAllModals();
+  saveOrders();
+  renderTmap();
+  updateSidebarHead();
+  alert(`↔ ย้ายโต๊ะ ${prev} → โต๊ะ ${target} เรียบร้อย`);
+}
+
+// ===== MERGE TABLES =====
+function openMergeModal(){
+  if(!selectedTable) return;
+  const ts=tableState();
+  const occupiedTables=[];
+  for(let i=1;i<=26;i++){
+    if(i!==selectedTable && ts[i]==='occupied') occupiedTables.push(i);
+  }
+  if(!occupiedTables.length){alert('ไม่มีโต๊ะอื่นที่กำลังใช้งาน');return;}
+  document.getElementById('merge-current-display').value=`โต๊ะ ${selectedTable}`;
+  document.getElementById('merge-source-sel').innerHTML=occupiedTables.map(t=>`<option value="${t}">โต๊ะ ${t}</option>`).join('');
+  document.getElementById('modal-merge').style.display='flex';
+}
+function doMergeTable(){
+  const source=parseInt(document.getElementById('merge-source-sel').value);
+  if(!source || !selectedTable) return;
+  const sourcePending=getPendingOrder(source);
+  if(!sourcePending){alert(`โต๊ะ ${source} ไม่มีออร์เดอร์`);return;}
+  
+  const targetPending=getPendingOrder(selectedTable);
+  updatePendingFromCurrentOrder(targetPending);
+  if(targetPending){
+    // Merge source items into target
+    sourcePending.items.forEach(si=>{
+      const ex=targetPending.items.find(ti=>ti.name===si.name && ti.price===si.price);
+      if(ex) ex.qty+=si.qty;
+      else targetPending.items.push({...si});
+    });
+    const newSub=targetPending.items.reduce((a,x)=>a+x.price*x.qty,0);
+    targetPending.discAmt=(targetPending.discAmt||0)+(sourcePending.discAmt||0);
+    targetPending.penalty=(targetPending.penalty||0)+(sourcePending.penalty||0);
+    targetPending.total=Math.max(0,newSub-targetPending.discAmt+targetPending.penalty);
+    // Remove source pending order
+    allOrders=allOrders.filter(o=>!(o.table===source && o.status==='ยังไม่จ่าย'));
+  } else {
+    // No target pending, just move source here
+    sourcePending.table=selectedTable;
+  }
+  // Reload current order
+  const updated=getPendingOrder(selectedTable);
+  if(updated) currentOrder=updated.items.map(x=>({...x}));
+  closeAllModals();
+  saveOrders();
+  renderTmap();
+  renderOrderSidebar();
+  updateSidebarHead();
+  alert(`⊕ รวมโต๊ะ ${source} เข้า โต๊ะ ${selectedTable} เรียบร้อย`);
+}
+
+// ===== SUMMARY =====
+function setSummaryPeriod(p){
+  summaryPeriod=p;
+  document.querySelectorAll('.period-tab').forEach(t=>t.classList.remove('active'));
+  document.getElementById('ptab-'+p).classList.add('active');
+  renderSummary();
+}
+
+function setSummaryStatusFilter(status){
+  summaryStatusFilter=status;
+  renderSummary();
+}
+
+function renderSummaryFilters(){
+  const filters=[
+    {id:'all',label:'ทั้งหมด'},
+    {id:'pending',label:'โต๊ะค้าง'},
+    {id:'paid',label:'เช็คบิลแล้ว'},
+    {id:'void',label:'Void'}
+  ];
+  const el=document.getElementById('sum-filters');
+  if(!el) return;
+  el.innerHTML=filters.map(f=>`<div class="sum-filter${summaryStatusFilter===f.id?' active':''}" onclick="setSummaryStatusFilter('${f.id}')">${f.label}</div>`).join('');
+}
+
+function isOrderInPeriod(order, now){
+  const ts=order.timestamp;
+  if(!ts) return true;
+  const d=new Date(ts);
+  if(summaryPeriod==='day') return d.getDate()===now.getDate()&&d.getMonth()===now.getMonth()&&d.getFullYear()===now.getFullYear();
+  if(summaryPeriod==='week') return (now-d)<7*24*3600000;
+  return d.getMonth()===now.getMonth()&&d.getFullYear()===now.getFullYear();
+}
+
+function getFilteredOrders(){
+  const now=new Date();
+  return allOrders.filter(o=>{
+    const statusOk =
+      summaryStatusFilter==='all' ? true :
+      summaryStatusFilter==='pending' ? o.status==='ยังไม่จ่าย' :
+      summaryStatusFilter==='paid' ? o.status==='จ่ายแล้ว' :
+      o.status==='void';
+    return statusOk && isOrderInPeriod(o, now);
+  });
+}
+
+function renderSummary(){
+  const now=new Date();
+  document.getElementById('sum-date').textContent=now.toLocaleDateString('th-TH',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+  const orders=getFilteredOrders();
+  const paidStatuses=['จ่ายแล้ว','เธเนเธฒเธขเนเธฅเนเธง'];
+  const pendingStatuses=['ยังไม่จ่าย','เธขเธฑเธเนเธกเนเธเนเธฒเธข'];
+  const paid=orders.filter(o=>paidStatuses.includes(o.status));
+  const pending=orders.filter(o=>pendingStatuses.includes(o.status));
+  const voided=orders.filter(o=>o.status==='void');
+  const rev=paid.reduce((a,o)=>a+o.total,0);
+  const pend=pending.reduce((a,o)=>a+o.total,0);
+  const disc=paid.reduce((a,o)=>a+o.discAmt,0);
+  document.getElementById('sum-stats').innerHTML=
+    '<div class="scard"><div class="slabel">ยอดขายรวม</div><div class="sval" style="color:var(--c-orange)">'+fmt(rev)+'</div></div>'+
+    '<div class="scard"><div class="slabel">บิลชำระแล้ว</div><div class="sval" style="color:var(--c-green)">'+paid.length+' บิล</div></div>'+
+    '<div class="scard"><div class="slabel">ค้างชำระ</div><div class="sval" style="color:var(--c-amber)">'+fmt(pend)+'</div></div>'+
+    '<div class="scard"><div class="slabel">Void | ส่วนลดรวม</div><div class="sval" style="color:var(--c-gray);font-size:16px">'+voided.length+' บิล | '+fmt(disc)+'</div></div>';
+  const periodLabel=summaryPeriod==='day'?'วันนี้':summaryPeriod==='week'?'สัปดาห์นี้':'เดือนนี้';
+  const renderOrderRow = (o, idx) => {
+    const isVoid=o.status==='void';
+    const isPaid=paidStatuses.includes(o.status);
+    const voidBtn=isPaid?'<button onclick="openVoidModal(\''+o.id+'\')" style="margin-top:3px;display:block;padding:2px 8px;border-radius:5px;font-size:10px;cursor:pointer;border:1px solid #e57373;background:var(--c-red-light);color:var(--c-red);font-family:\'Sarabun\',sans-serif;font-weight:600">Void</button>':'';
+    const voidNote=isVoid&&o.voidReason?'<div style="font-size:9px;color:var(--c-gray);margin-top:2px">'+o.voidReason+'</div>':'';
+    return '<tr'+(isVoid?' style="opacity:0.5"':'')+'>'+
+      '<td style="color:var(--c-gray)">'+idx+'</td>'+
+      '<td><b>T'+o.table+'</b></td>'+
+      '<td>'+o.items.map(x=>x.name+(x.qty>1?' x'+x.qty:'')).join(', ')+'</td>'+
+      '<td>'+o.items.reduce((a,x)=>a+x.qty,0)+'</td>'+
+      '<td style="color:var(--c-red)">'+(o.discAmt?'-'+fmt(o.discAmt):'-')+'</td>'+
+      '<td style="color:var(--c-gray);font-size:11px">'+(o.discName||'-')+'</td>'+
+      '<td><b'+(isVoid?' style="text-decoration:line-through"':'')+'>'+fmt(o.total)+'</b></td>'+
+      '<td style="font-size:11px">'+(o.pay||'-')+'</td>'+
+      '<td><span class="badge '+(isVoid?'bdg-void':isPaid?'bdg-paid':'bdg-pending')+'">'+(isVoid?'Void':o.status)+'</span>'+voidNote+voidBtn+'</td>'+
+    '</tr>';
+  };
+  const groups = [
+    {label:'จ่ายแล้ว', rows:paid},
+    {label:'ยังไม่จ่าย', rows:pending},
+    {label:'Void', rows:voided}
+  ].filter(g=>g.rows.length);
+  let index = 1;
+  document.getElementById('orders-tbody').innerHTML = orders.length
+    ? groups.map(group => '<tr class="summary-group-row"><td colspan="9">'+group.label+' ('+group.rows.length+')</td></tr>' + group.rows.map(o=>renderOrderRow(o, index++)).join('')).join('')
+    : '<tr><td colspan="9" style="text-align:center;color:var(--c-gray);padding:20px">ไม่มีข้อมูล'+periodLabel+'</td></tr>';
+}
+// ===== CLEAR HISTORY =====
+function openClearHistoryModal(){
+  const orders=getFilteredOrders().filter(o=>o.status==='จ่ายแล้ว');
+  const label=summaryPeriod==='day'?'วันนี้':summaryPeriod==='week'?'สัปดาห์นี้':'เดือนนี้';
+  document.getElementById('clear-period-info').textContent=`จะลบออร์เดอร์ที่จ่ายแล้ว ${orders.length} รายการ (${label})`;
+  document.getElementById('modal-clear').style.display='flex';
+}
+function doClearHistory(){
+  const now=new Date();
+  allOrders=allOrders.filter(o=>{
+    if(o.status==='ยังไม่จ่าย') return true; // always keep pending
+    const ts=o.timestamp;
+    if(!ts) return false;
+    const d=new Date(ts);
+    if(summaryPeriod==='day'){
+      return !(d.getDate()===now.getDate()&&d.getMonth()===now.getMonth()&&d.getFullYear()===now.getFullYear());
+    } else if(summaryPeriod==='week'){
+      return !((now-d)<7*24*3600000);
+    } else {
+      return !(d.getMonth()===now.getMonth()&&d.getFullYear()===now.getFullYear());
+    }
+  });
+  closeAllModals();
+  saveOrders();
+  renderSummary();
+  renderTmap();
+  alert('🗑 ล้างประวัติเรียบร้อย');
+}
+
+// ===== CLOSE MODALS =====
+function closeAllModals(){
+  document.querySelectorAll('.modal-overlay').forEach(m=>m.style.display='none');
+}
+document.querySelectorAll('.modal-overlay').forEach(m=>{
+  m.addEventListener('click',e=>{if(e.target===m)closeAllModals();});
+});
+
+// ===== EXCEL DOWNLOAD =====
+function downloadExcel(){
+  const now=new Date();
+  const dateStr=now.toLocaleDateString('th-TH',{day:'numeric',month:'short',year:'numeric'});
+  const orders=getFilteredOrders();
+  const rows=[
+    ['สรุปยอดขาย','','วันที่: '+dateStr],
+    [],
+    ['#','โต๊ะ','เมนู','จำนวน','ราคารวมก่อนลด','ส่วนลด','ชื่อส่วนลด','ยอดสุทธิ','ช่องทางชำระ','สถานะ'],
+  ];
+  orders.forEach((o,i)=>{
+    const sub=o.items.reduce((a,x)=>a+x.price*x.qty,0);
+    rows.push([i+1,'T'+o.table,o.items.map(x=>x.name+(x.qty>1?` x${x.qty}`:'')).join(', '),o.items.reduce((a,x)=>a+x.qty,0),sub,o.discAmt||0,o.discName||'',o.total,o.pay||'',o.status]);
+  });
+  const paid=orders.filter(o=>o.status==='จ่ายแล้ว');
+  const rev=paid.reduce((a,o)=>a+o.total,0);
+  const totalDisc=orders.reduce((a,o)=>a+o.discAmt,0);
+  rows.push([]);
+  rows.push(['','','','','ยอดขายรวม','','','',rev,'']);
+  rows.push(['','','','','ส่วนลดรวม','','','',totalDisc,'']);
+  rows.push(['','','','','จำนวนบิลชำระแล้ว','','','',paid.length,'']);
+  const bom='\uFEFF';
+  const csv=bom+rows.map(r=>r.map(c=>{const s=String(c??'');return s.includes(',')||s.includes('"')||s.includes('\n')?`"${s.replace(/"/g,'""')}"`:s;}).join(',')).join('\n');
+  const a=document.createElement('a');
+  a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);
+  a.download=`buffet_pos_${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}.csv`;
+  a.click();
+}
+
+// ===== SETTINGS =====
+function renderSettings(){renderSetMenus('main');renderSetMenus('special');renderSetDiscounts();renderSetPayMethods();}
+function renderSetMenus(cat){
+  const items=cat==='main'?mainMenus:specialMenus;
+  const el=document.getElementById(`set-${cat}-menus`);
+  el.innerHTML=items.map(m=>`
+    <div class="set-item">
+      <div class="set-item-info">
+        <div class="set-item-name">${m.name}</div>
+        <span class="badge ${cat==='main'?'bdg-main':'bdg-special'}">${cat==='main'?'หลัก':'พิเศษ'}</span>
+      </div>
+      <div class="set-item-price">${fmt(m.price)}</div>
+      <div class="icon-btn" onclick="editMenu('${m.id}','${cat}')">✏️</div>
+      <div class="icon-btn del" onclick="delMenu('${m.id}','${cat}')">🗑</div>
+    </div>`).join('');
+}
+function renderSetDiscounts(){
+  const el=document.getElementById('set-discounts');
+  el.innerHTML=discounts.map(d=>`
+    <div class="set-item">
+      <div class="set-item-info">
+        <div class="set-item-name">${d.name}</div>
+        <div class="set-item-sub">${d.type==='percent'?d.amt+'%':fmt(d.amt)}</div>
+      </div>
+      <div class="icon-btn" onclick="editDiscount('${d.id}')">✏️</div>
+      <div class="icon-btn del" onclick="delDiscount('${d.id}')">🗑</div>
+    </div>`).join('');
+}
+function addMainMenu(){
+  const name=document.getElementById('nm-name').value.trim();
+  const price=parseInt(document.getElementById('nm-price').value)||0;
+  if(!name||!price){alert('กรุณากรอกชื่อและราคา');return;}
+  mainMenus.push({id:uid(),name,price,cat:'main'});
+  document.getElementById('nm-name').value='';document.getElementById('nm-price').value='';
+  renderSettings();renderMenuGrid();
+}
+function addSpecialMenu(){
+  const name=document.getElementById('ns-name').value.trim();
+  const price=parseInt(document.getElementById('ns-price').value)||0;
+  if(!name||!price){alert('กรุณากรอกชื่อและราคา');return;}
+  specialMenus.push({id:uid(),name,price,cat:'special'});
+  document.getElementById('ns-name').value='';document.getElementById('ns-price').value='';
+  renderSettings();renderMenuGrid();
+}
+function addDiscount(){
+  const name=document.getElementById('nd-name').value.trim();
+  const amt=parseInt(document.getElementById('nd-amt').value)||0;
+  const type=document.getElementById('nd-type').value;
+  if(!name||!amt){alert('กรุณากรอกชื่อและจำนวน');return;}
+  discounts.push({id:uid(),name,amt,type});
+  document.getElementById('nd-name').value='';document.getElementById('nd-amt').value='';
+  renderSettings();
+}
+function delMenu(id,cat){
+  if(!confirm('ลบเมนูนี้?'))return;
+  if(cat==='main')mainMenus=mainMenus.filter(x=>x.id!==id);
+  else specialMenus=specialMenus.filter(x=>x.id!==id);
+  renderSettings();renderMenuGrid();
+}
+function delDiscount(id){
+  if(!confirm('ลบส่วนลดนี้?'))return;
+  discounts=discounts.filter(x=>x.id!==id);
+  if(selectedDiscId===id){selectedDiscId=null;recalc();}
+  renderSettings();
+}
+let modalCtx2=null;
+function editMenu(id,cat){
+  const arr=cat==='main'?mainMenus:specialMenus;
+  const m=arr.find(x=>x.id===id);
+  modalCtx2={type:'menu',id,cat};
+  document.getElementById('modal-title').textContent='แก้ไขเมนู';
+  document.getElementById('m-name').value=m.name;
+  document.getElementById('m-price').value=m.price;
+  document.getElementById('m-type-row').style.display='none';
+  document.getElementById('modal').style.display='flex';
+}
+function editDiscount(id){
+  const d=discounts.find(x=>x.id===id);
+  modalCtx2={type:'discount',id};
+  document.getElementById('modal-title').textContent='แก้ไขส่วนลด';
+  document.getElementById('m-name').value=d.name;
+  document.getElementById('m-price').value=d.amt;
+  document.getElementById('m-type-row').style.display='';
+  document.getElementById('m-type').value=d.type;
+  document.getElementById('modal').style.display='flex';
+}
+function closeModal(){
+  document.getElementById('modal').style.display='none';
+  document.getElementById('m-price').closest('.mf-row').style.display='';
+  modalCtx2=null;
+}
+function saveModal(){
+  if(!modalCtx2)return;
+  if(modalCtx2.type==='menu'){
+    const arr=modalCtx2.cat==='main'?mainMenus:specialMenus;
+    const m=arr.find(x=>x.id===modalCtx2.id);
+    m.name=document.getElementById('m-name').value.trim();
+    m.price=parseInt(document.getElementById('m-price').value)||0;
+  } else if(modalCtx2.type==='paymethod'){
+    const p=payMethods.find(x=>x.id===modalCtx2.id);
+    const oldName=p.name;
+    const newName=document.getElementById('m-name').value.trim();
+    if(!newName){alert('กรุณากรอกชื่อ');return;}
+    p.name=newName;
+    if(selectedPay===oldName) selectedPay=newName;
+    document.getElementById('m-price').closest('.mf-row').style.display='';
+  } else {
+    const d=discounts.find(x=>x.id===modalCtx2.id);
+    d.name=document.getElementById('m-name').value.trim();
+    d.amt=parseInt(document.getElementById('m-price').value)||0;
+    d.type=document.getElementById('m-type').value;
+  }
+  closeModal();renderSettings();renderMenuGrid();renderPayGrid();
+}
+
+// ===== VOID BILL =====
+function openVoidModal(orderId){
+  const o=allOrders.find(x=>x.id===orderId);
+  if(!o) return;
+  voidOrderId=orderId;
+  document.getElementById('void-bill-info').innerHTML=`
+    <div><b>โต๊ะ T${o.table}</b> &nbsp;|&nbsp; ${o.items.map(x=>x.name+(x.qty>1?` ×${x.qty}`:'')).join(', ')}</div>
+    <div>ยอด: <b style="color:var(--c-orange)">${fmt(o.total)}</b> &nbsp;|&nbsp; ชำระ: ${o.pay}</div>`;
+  document.getElementById('void-reason').value='';
+  document.getElementById('modal-void').style.display='flex';
+}
+function doVoidBill(){
+  if(!voidOrderId) return;
+  const o=allOrders.find(x=>x.id===voidOrderId);
+  if(!o) return;
+  const reason=document.getElementById('void-reason').value.trim();
+  if(!reason){alert('กรุณาระบุเหตุผลในการ Void');return;}
+  o.status='void';
+  o.voidReason=reason;
+  o.voidAt=Date.now();
+  voidOrderId=null;
+  closeAllModals();
+  saveOrders();
+  renderSummary();
+  alert(`🚫 Void บิลโต๊ะ ${o.table} เรียบร้อย`);
+}
+
+// ===== SETTINGS: PAY METHODS =====
+function renderSetPayMethods(){
+  const el=document.getElementById('set-pay-methods');
+  el.innerHTML=payMethods.map(p=>`
+    <div class="set-item">
+      <div class="set-item-info">
+        <div class="set-item-name">💳 ${p.name}</div>
+      </div>
+      <div class="icon-btn" onclick="editPayMethod('${p.id}')">✏️</div>
+      <div class="icon-btn del" onclick="delPayMethod('${p.id}')">🗑</div>
+    </div>`).join('');
+}
+function addPayMethod(){
+  const name=document.getElementById('np-name').value.trim();
+  if(!name){alert('กรุณากรอกชื่อช่องทาง');return;}
+  if(payMethods.find(p=>p.name===name)){alert('ชื่อช่องทางนี้มีอยู่แล้ว');return;}
+  payMethods.push({id:uid(),name});
+  document.getElementById('np-name').value='';
+  renderSettings();renderPayGrid();
+}
+function delPayMethod(id){
+  if(payMethods.length<=1){alert('ต้องมีช่องทางชำระอย่างน้อย 1 ช่องทาง');return;}
+  if(!confirm('ลบช่องทางชำระนี้?'))return;
+  const p=payMethods.find(x=>x.id===id);
+  payMethods=payMethods.filter(x=>x.id!==id);
+  if(selectedPay===p.name) selectedPay=payMethods[0].name;
+  renderSettings();renderPayGrid();
+}
+function editPayMethod(id){
+  const p=payMethods.find(x=>x.id===id);
+  modalCtx2={type:'paymethod',id};
+  document.getElementById('modal-title').textContent='แก้ไขช่องทางชำระ';
+  document.getElementById('m-name').value=p.name;
+  document.getElementById('m-price').value='';
+  document.getElementById('m-type-row').style.display='none';
+  // Hide price field for pay method edit
+  document.getElementById('m-price').closest('.mf-row').style.display='none';
+  document.getElementById('modal').style.display='flex';
+}
+
+// ===== INIT =====
+loadOrders();
+renderTmap();
+renderMenuCats();
+renderMenuGrid();
+renderDiscChips();
+renderPayGrid();
+
+// ===== EXPOSE GLOBALS สำหรับ Firebase onSnapshot =====
+window.allOrders = allOrders;
+window.syncOidCounter = syncOidCounter;
+window.renderTmap = renderTmap;
+window.renderSummary = renderSummary;
+</script>
+</body>
+</html>
