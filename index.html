@@ -2,51 +2,32 @@
 <html lang="th">
 <head>
 <meta charset="UTF-8">
-<title>POS Firebase</title>
-</head>
-<body>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Buffet POS</title>
 
-<h1>POS (Firebase Realtime)</h1>
-<div id="app"></div>
-
-<script>
-// ===== STATE =====
-let allOrders = [];
-let selectedTable = 1;
-let currentOrder = [];
-
-function render(){
-  document.getElementById('app').innerHTML = `
-    <h3>โต๊ะ ${selectedTable}</h3>
-    <button onclick="addItem()">+ เพิ่มเมนู</button>
-    <button onclick="saveOrder()">💾 บันทึก</button>
-    <pre>${JSON.stringify(allOrders, null, 2)}</pre>
-  `;
-}
-
-function addItem(){
-  currentOrder.push({name:'หมู', price:100, qty:1});
-}
-
-</script>
-
-<!-- ===== FIREBASE ===== -->
+<!-- Firebase SDK v10 -->
 <script type="module">
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+  import {
+    getFirestore, collection, doc, getDocs, setDoc, deleteDoc, onSnapshot, query, orderBy
+  } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
-const firebaseConfig = {
-  apiKey: "AIzaSyCDGzTPClE88qjT7XiRVnD0da4N11VbIfE",
-  authDomain: "posjing.firebaseapp.com",
-  projectId: "posjing",
-  storageBucket: "posjing.firebasestorage.app",
-  messagingSenderId: "324403427824",
-  appId: "1:324403427824:web:58f4acc302fc846b9cc535",
-  measurementId: "G-629GK6HLWF"
-};
+  // ========================================================
+  // 🔧 วาง firebaseConfig ของคุณที่นี่
+  // ได้จาก Firebase Console → Project Settings → Your apps
+  // ========================================================
+  const firebaseConfig = {
+    apiKey: "AIzaSyCSdUJxRXwPLccNsDB9jCDygeQPziH7jh0",
+    authDomain: "posnajaaa.firebaseapp.com",
+    projectId: "posnajaaa",
+    storageBucket: "posnajaaa.firebasestorage.app",
+    messagingSenderId: "1089065672381",
+    appId: "1:1089065672381:web:fd8ae75ba17d961d6ba1d4",
+    measurementId: "G-8TQGR1WGH1"
+  };
 
-const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
+  const app = initializeApp(firebaseConfig);
+  const db = getFirestore(app);
 
   // ---- Expose to global scope ----
   window._db = db;
@@ -920,20 +901,19 @@ function clearOrder(){
 }
 
 // ===== SAVE ORDER =====
-window.saveOrder = async function(){
-  const order = {
-    table: selectedTable,
-    items: currentOrder,
-    updatedAt: Date.now()
-  };
+function saveOrder(){
+  if(!selectedTable||!currentOrder.length){alert('กรุณาเลือกโต๊ะและเพิ่มเมนู');return;}
+  const now=Date.now();
+  const sub=currentOrder.reduce((a,x)=>a+x.price*x.qty,0);
+  const d=selectedDiscId?discounts.find(x=>x.id===selectedDiscId):null;
+  const discAmt=d?(d.type==='percent'?Math.round(sub*d.amt/100):d.amt):customDisc;
+  const discName=d?d.name:'';
+  const penalty=getPenaltyValue();
+  const total=Math.max(0,sub-discAmt+penalty);
+  const items=currentOrder.map(x=>({id:x.id,name:x.name,price:x.price,qty:x.qty,cat:x.cat||'main'}));
 
-  allOrders = [order];
-
-  await setDoc(doc(db, "pos", "main"), {
-    orders: allOrders
-  });
-};
-
+  const pending=getPendingOrder(selectedTable);
+  if(pending){
     // Update existing pending order
     pending.items=items;
     pending.discId=selectedDiscId;
@@ -1556,37 +1536,6 @@ window.syncOidCounter = syncOidCounter;
 window.renderTmap = renderTmap;
 window.renderSummary = renderSummary;
 </script>
-<script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-  import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
-
-  const firebaseConfig = {
-    apiKey: "AIzaSyCDGzTPClE88qjT7XiRVnD0da4N11VbIfE",
-    authDomain: "posjing.firebaseapp.com",
-    projectId: "posjing",
-    storageBucket: "posjing.firebasestorage.app",
-    messagingSenderId: "324403427824",
-    appId: "1:324403427824:web:58f4acc302fc846b9cc535",
-    measurementId: "G-629GK6HLWF"
-  };
-
-  const app = initializeApp(firebaseConfig);
-  const db = getFirestore(app);
-
-  // ===== SAVE แบบไม่ซ้ำ (สำคัญมาก) =====
-  async function saveOrderToCloud(table, data){
-    await setDoc(doc(db, "tables", String(table)), data);
-  }
-
-  // ===== REALTIME SYNC =====
-onSnapshot(doc(db, "pos", "main"), (docSnap) => {
-  if (docSnap.exists()) {
-    allOrders = docSnap.data().orders || [];
-    render();
-  }
-});
-
-render();
-</script>  
+  
 </body>
 </html>
