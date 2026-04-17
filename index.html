@@ -560,28 +560,10 @@ function syncOidCounter(){
   }, 0);
   oidCounter = Math.max(oidCounter, maxId);
 }
-// ===== FIREBASE SAVE / LOAD (แทน localStorage) =====
-async function saveOrders(){
-  if(!window._fbReady) {
-    // fallback localStorage ถ้า Firebase ยังไม่พร้อม
-    try{ localStorage.setItem(ORDERS_STORAGE_KEY, JSON.stringify(allOrders)); }catch(e){}
-    return;
-  }
-  const { collection, doc, setDoc, deleteDoc } = window._fbModules;
-  const db = window._db;
-  try {
-    // Save/update ทุก order ใน allOrders ไปยัง Firestore
-    for(const o of allOrders){
-      await setDoc(doc(db, "orders", String(o.id)), o);
-    }
-  } catch(err){
-    console.warn('Firebase saveOrders error:', err);
-  }
-}
-
-// หรือบันทึก order เดี่ยว (เร็วกว่า ใช้กับ confirmPay/saveOrder)
+// ===== FIREBASE SAVE / LOAD =====
+// บันทึก/อัพเดท order เดี่ยวไป Firestore (เร็ว ไม่ race condition)
 async function saveOneOrder(o){
-  if(!window._fbReady) { saveOrders(); return; }
+  if(!window._fbReady) return;
   const { doc, setDoc } = window._fbModules;
   try {
     await setDoc(doc(window._db, "orders", String(o.id)), o);
@@ -590,6 +572,7 @@ async function saveOneOrder(o){
   }
 }
 
+// ลบ order ออกจาก Firestore
 async function deleteOneOrder(id){
   if(!window._fbReady) return;
   const { doc, deleteDoc } = window._fbModules;
@@ -598,6 +581,13 @@ async function deleteOneOrder(id){
   } catch(err){
     console.warn('Firebase deleteOneOrder error:', err);
   }
+}
+
+// saveOrders = เซฟเฉพาะ order ล่าสุดที่ถูกแก้ไข (ใช้ชื่อเดิมเพื่อ backward compat)
+// *** ไม่ loop ทั้งหมดแล้ว — ป้องกัน race condition ***
+function saveOrders(){
+  // intentionally empty — ทุกที่ที่เรียก saveOrders() ให้ใช้ saveOneOrder() แทน
+  // ฟังก์ชันนี้เก็บไว้เพื่อไม่ให้ error
 }
 
 function loadOrders(){
@@ -955,7 +945,9 @@ function saveOrder(){
     });
   }
   clearOrder();
-  saveOrders();
+  // บันทึก order เดี่ยวที่เพิ่ง create/update
+  const saved = getPendingOrder(selectedTable) || allOrders[allOrders.length-1];
+  if(saved) saveOneOrder(saved);
   renderTmap();
   updateSidebarHead();
   alert(`💾 บันทึกออร์เดอร์โต๊ะ ${selectedTable} เรียบร้อย`);
@@ -997,8 +989,9 @@ function confirmPay(){
     pending.status='จ่ายแล้ว';
     pending.paidAt=now;
     const paidTotal=pending.total;
+    const paidOrder = {...pending};
     clearOrder();
-    saveOrders();
+    saveOneOrder(paidOrder);
     renderTmap();
     updateSidebarHead();
     alert(`✅ ชำระเงินโต๊ะ ${selectedTable} ${fmt(paidTotal)} (${selectedPay}) เรียบร้อย!`);
@@ -1010,8 +1003,9 @@ function confirmPay(){
       discId:selectedDiscId,discName,discAmt:itemDisc,penalty:itemPenalty,total,
       status:'จ่ายแล้ว',timestamp:now,openTime:now,paidAt:now
     });
+    const newOrder = allOrders[allOrders.length-1];
     clearOrder();
-    saveOrders();
+    if(newOrder) saveOneOrder(newOrder);
     renderTmap();
     updateSidebarHead();
     alert(`✅ ชำระเงินโต๊ะ ${selectedTable} ${fmt(total)} (${selectedPay}) เรียบร้อย!`);
@@ -1024,9 +1018,14 @@ function cancelTable(){
   const pending=getPendingOrder(selectedTable);
   if(!pending){alert('ไม่มีออร์เดอร์ค้างในโต๊ะนี้');return;}
   if(!confirm(`⚠️ ยืนยันยกเลิกโต๊ะ ${selectedTable}?\nออร์เดอร์ทั้งหมดจะถูกลบและไม่สามารถกู้คืนได้`)) return;
-  allOrders=allOrders.filter(o=>!(o.table===selectedTable && o.status==='ยังไม่จ่าย'));
+  // ลบ pending order ออกจาก Firestore และ local array
+  const toCancel = allOrders.filter(o=>o.table===selectedTable && o.status==='ยังไม่จ่าย');
+  toCancel.forEach(o => {
+    const idx = allOrders.indexOf(o);
+    if(idx > -1) allOrders.splice(idx, 1);
+    deleteOneOrder(o.id);
+  });
   clearOrder();
-  saveOrders();
   renderTmap();
   updateSidebarHead();
   alert(`❌ ยกเลิกโต๊ะ ${selectedTable} เรียบร้อย`);
@@ -1119,7 +1118,11 @@ function doSplitItems(){
   } else {
     currentOrder=sourcePending.items.map(item=>({...item}));
   }
-  saveOrders();
+  // Save both affected orders
+  const sp=getPendingOrder(selectedTable);
+  const tp=getPendingOrder(parseInt(document.getElementById('split-target-sel').value));
+  if(sp) saveOneOrder({...sp});
+  if(tp) saveOneOrder({...tp});
   closeAllModals();
   renderTmap();
   renderOrderSidebar();
@@ -1147,12 +1150,14 @@ function doMoveTable(){
   if(ts[target]==='occupied'){alert(`โต๊ะ ${target} ไม่ว่าง`);return;}
   updatePendingFromCurrentOrder(getPendingOrder(selectedTable));
   allOrders.forEach(o=>{
-    if(o.table===selectedTable && o.status==='ยังไม่จ่าย') o.table=target;
+    if(o.table===selectedTable && o.status==='ยังไม่จ่าย'){
+      o.table=target;
+      saveOneOrder({...o});
+    }
   });
   const prev=selectedTable;
   selectedTable=target;
   closeAllModals();
-  saveOrders();
   renderTmap();
   updateSidebarHead();
   alert(`↔ ย้ายโต๊ะ ${prev} → โต๊ะ ${target} เรียบร้อย`);
@@ -1190,17 +1195,21 @@ function doMergeTable(){
     targetPending.discAmt=(targetPending.discAmt||0)+(sourcePending.discAmt||0);
     targetPending.penalty=(targetPending.penalty||0)+(sourcePending.penalty||0);
     targetPending.total=Math.max(0,newSub-targetPending.discAmt+targetPending.penalty);
-    // Remove source pending order
-    allOrders=allOrders.filter(o=>!(o.table===source && o.status==='ยังไม่จ่าย'));
+    // Remove source pending order from local + Firestore
+    const srcIdx=allOrders.findIndex(o=>o.table===source && o.status==='ยังไม่จ่าย');
+    if(srcIdx>-1){ deleteOneOrder(allOrders[srcIdx].id); allOrders.splice(srcIdx,1); }
+    // Save merged target
+    const mergedTarget=getPendingOrder(selectedTable);
+    if(mergedTarget) saveOneOrder({...mergedTarget});
   } else {
     // No target pending, just move source here
     sourcePending.table=selectedTable;
+    saveOneOrder({...sourcePending});
   }
   // Reload current order
   const updated=getPendingOrder(selectedTable);
   if(updated) currentOrder=updated.items.map(x=>({...x}));
   closeAllModals();
-  saveOrders();
   renderTmap();
   renderOrderSidebar();
   updateSidebarHead();
@@ -1307,21 +1316,27 @@ function openClearHistoryModal(){
 }
 function doClearHistory(){
   const now=new Date();
-  allOrders=allOrders.filter(o=>{
-    if(o.status==='ยังไม่จ่าย') return true; // always keep pending
+  // หา orders ที่จะลบ
+  const toDelete = allOrders.filter(o=>{
+    if(o.status==='ยังไม่จ่าย') return false; // ไม่ลบ pending
     const ts=o.timestamp;
-    if(!ts) return false;
+    if(!ts) return true;
     const d=new Date(ts);
     if(summaryPeriod==='day'){
-      return !(d.getDate()===now.getDate()&&d.getMonth()===now.getMonth()&&d.getFullYear()===now.getFullYear());
+      return (d.getDate()===now.getDate()&&d.getMonth()===now.getMonth()&&d.getFullYear()===now.getFullYear());
     } else if(summaryPeriod==='week'){
-      return !((now-d)<7*24*3600000);
+      return ((now-d)<7*24*3600000);
     } else {
-      return !(d.getMonth()===now.getMonth()&&d.getFullYear()===now.getFullYear());
+      return (d.getMonth()===now.getMonth()&&d.getFullYear()===now.getFullYear());
     }
   });
+  // ลบออกจาก local array + Firestore
+  toDelete.forEach(o=>{
+    const idx=allOrders.indexOf(o);
+    if(idx>-1) allOrders.splice(idx,1);
+    deleteOneOrder(o.id);
+  });
   closeAllModals();
-  saveOrders();
   renderSummary();
   renderTmap();
   alert('🗑 ล้างประวัติเรียบร้อย');
@@ -1501,7 +1516,7 @@ function doVoidBill(){
   o.voidAt=Date.now();
   voidOrderId=null;
   closeAllModals();
-  saveOrders();
+  saveOneOrder({...o});
   renderSummary();
   alert(`🚫 Void บิลโต๊ะ ${o.table} เรียบร้อย`);
 }
