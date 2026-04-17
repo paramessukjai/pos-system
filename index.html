@@ -25,39 +25,43 @@
   const app = initializeApp(firebaseConfig);
   const db = getFirestore(app);
 
-  // ---- Expose to global scope ----
   window._db = db;
   window._fbModules = { collection, doc, getDocs, setDoc, deleteDoc, onSnapshot, query, orderBy };
   window._fbReady = true;
 
-  // ---- แจ้ง script หลักว่า Firebase พร้อมแล้ว ----
-  window.dispatchEvent(new Event('fbReady'));
-
-  // ---- Real-time listener: sync allOrders จาก Firestore ----
+  // ---- [FIX BUG 1] Real-time sync orders — ใช้ merge แทนเขียนทับทั้งหมด ----
   const ordersRef = collection(db, "orders");
   onSnapshot(query(ordersRef, orderBy("timestamp", "desc")), (snapshot) => {
+    // อัพเดทเฉพาะ allOrders array โดยไม่ replace reference
     const newOrders = [];
     snapshot.forEach(docSnap => {
       newOrders.push({ ...docSnap.data(), id: docSnap.id });
     });
-    // อัปเดต allOrders ผ่าน global setter เพื่อให้ script หลักรับรู้ด้วย
-    if (typeof window._setAllOrders === 'function') {
-      window._setAllOrders(newOrders);
-    }
+    // splice in-place เพื่อไม่ให้ reference หาย
+    allOrders.splice(0, allOrders.length, ...newOrders);
     window.syncOidCounter && window.syncOidCounter();
     window.renderTmap && window.renderTmap();
     if (document.getElementById('page-summary')?.classList.contains('active')) {
       window.renderSummary && window.renderSummary();
     }
-  }, (err) => {
-    console.error("Firestore snapshot error:", err);
-    // แสดง error ให้ user เห็น
-    const notice = document.getElementById('fb-status');
-    if (notice) {
-      notice.textContent = '⚠️ Firebase เชื่อมต่อไม่ได้: ' + err.message;
-      notice.style.display = 'block';
+  }, (err) => { console.warn("Firestore orders error:", err); });
+
+  // ---- [FIX BUG 2] Real-time sync settings (menus, discounts, payMethods) ----
+  onSnapshot(doc(db, "settings", "config"), (docSnap) => {
+    if (!docSnap.exists()) return;
+    const data = docSnap.data();
+    if (data.mainMenus)    mainMenus.splice(0, mainMenus.length, ...data.mainMenus);
+    if (data.specialMenus) specialMenus.splice(0, specialMenus.length, ...data.specialMenus);
+    if (data.discounts)    discounts.splice(0, discounts.length, ...data.discounts);
+    if (data.payMethods)   payMethods.splice(0, payMethods.length, ...data.payMethods);
+    window.renderMenuGrid  && window.renderMenuGrid();
+    window.renderMenuCats  && window.renderMenuCats();
+    window.renderDiscChips && window.renderDiscChips();
+    window.renderPayGrid   && window.renderPayGrid();
+    if (document.getElementById('page-settings')?.classList.contains('active')) {
+      window.renderSettings && window.renderSettings();
     }
-  });
+  }, (err) => { console.warn("Firestore settings error:", err); });
 </script>
 </head>
 <body>
@@ -223,8 +227,6 @@ body{font-family:'Sarabun',sans-serif;font-size:14px;color:var(--color-text-prim
 }
 </style>
 
-<div id="fb-status" style="display:none;position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:#c0392b;color:#fff;padding:10px 20px;border-radius:10px;font-size:13px;z-index:9999;box-shadow:0 4px 16px rgba(0,0,0,0.3)"></div>
-<div id="fb-loading" style="display:flex;position:fixed;inset:0;background:rgba(255,255,255,0.85);align-items:center;justify-content:center;z-index:9998;font-size:15px;color:#e8620a;font-family:Sarabun,sans-serif;font-weight:600">🔥 กำลังเชื่อมต่อ Firebase...</div>
 <h2 style="position:absolute;width:1px;height:1px;overflow:hidden">ระบบ POS บุฟเฟ่ต์ - จัดการโต๊ะ เมนู และออร์เดอร์</h2>
 
 <div class="app">
@@ -519,14 +521,20 @@ let payMethods = [
   {id:'p4',name:'เงินสด'},
 ];
 
-// allOrders: โหลดจาก Firestore ผ่าน onSnapshot (ไม่มีข้อมูล hardcode)
-let allOrders = [];
-
-// ---- Global setter ให้ Firebase module อัปเดต allOrders ได้โดยตรง ----
-window._setAllOrders = function(newOrders) {
-  allOrders = newOrders;
-  window.allOrders = allOrders;
-};
+// allOrders: paid orders are historical, pending orders = active tables
+// Added: timestamp (when created), openTime (when table opened), discId (for restoring discount)
+let allOrders = [
+  {id:'o1',table:13,items:[{id:'m2',name:'Buffet Promotion 299',price:299,qty:2,cat:'main'}],pay:'QR Payment',discId:null,discName:'',discAmt:0,total:598,status:'จ่ายแล้ว',timestamp:_now-5*3600000,openTime:_now-7*3600000},
+  {id:'o2',table:12,items:[{id:'m1',name:'Buffet 329',price:329,qty:3,cat:'main'}],pay:'Master Card',discId:null,discName:'',discAmt:0,total:987,status:'จ่ายแล้ว',timestamp:_now-4.5*3600000,openTime:_now-6.5*3600000},
+  {id:'o3',table:2,items:[{id:'m1',name:'Buffet 329',price:329,qty:2,cat:'main'}],pay:'QR Payment',discId:'d2',discName:'รีวิว 30฿',discAmt:30,total:628,status:'จ่ายแล้ว',timestamp:_now-4*3600000,openTime:_now-6*3600000},
+  {id:'o4',table:5,items:[{id:'m1',name:'Buffet 329',price:329,qty:3,cat:'main'}],pay:'QR Payment',discId:null,discName:'',discAmt:0,total:987,status:'จ่ายแล้ว',timestamp:_now-3.5*3600000,openTime:_now-5.5*3600000},
+  {id:'o5',table:9,items:[{id:'m1',name:'Buffet 329',price:329,qty:2,cat:'main'}],pay:'QR Payment',discId:null,discName:'',discAmt:0,total:658,status:'จ่ายแล้ว',timestamp:_now-3*3600000,openTime:_now-5*3600000},
+  {id:'o6',table:14,items:[{id:'m1',name:'Buffet 329',price:329,qty:3,cat:'main'}],pay:'Visa',discId:null,discName:'',discAmt:0,total:987,status:'จ่ายแล้ว',timestamp:_now-2.5*3600000,openTime:_now-4.5*3600000},
+  {id:'o7',table:1,items:[{id:'m2',name:'Buffet Promotion 299',price:299,qty:4,cat:'main'}],pay:'Master Card',discId:null,discName:'',discAmt:0,total:1196,status:'จ่ายแล้ว',timestamp:_now-2*3600000,openTime:_now-4*3600000},
+  {id:'o8',table:3,items:[{id:'m4',name:'Dookki Daytime',price:199,qty:3,cat:'main'}],pay:'QR Payment',discId:null,discName:'',discAmt:0,total:597,status:'จ่ายแล้ว',timestamp:_now-1.5*3600000,openTime:_now-3.5*3600000},
+  {id:'o9',table:18,items:[{id:'m4',name:'Dookki Daytime',price:199,qty:1,cat:'main'}],pay:'Master Card',discId:null,discName:'',discAmt:0,total:199,status:'จ่ายแล้ว',timestamp:_now-1*3600000,openTime:_now-3*3600000},
+  {id:'o10',table:21,items:[{id:'m2',name:'Buffet Promotion 299',price:299,qty:2,cat:'main'}],pay:'Master Card',discId:null,discName:'',discAmt:0,total:598,status:'จ่ายแล้ว',timestamp:_now-0.5*3600000,openTime:_now-2.5*3600000},
+];
 
 let selectedTable = null;
 let currentOrder = [];
@@ -553,23 +561,21 @@ function syncOidCounter(){
   oidCounter = Math.max(oidCounter, maxId);
 }
 // ===== FIREBASE SAVE / LOAD (แทน localStorage) =====
-// ===== FIREBASE SAVE / LOAD =====
 async function saveOrders(){
   if(!window._fbReady) {
     // fallback localStorage ถ้า Firebase ยังไม่พร้อม
     try{ localStorage.setItem(ORDERS_STORAGE_KEY, JSON.stringify(allOrders)); }catch(e){}
     return;
   }
-  const { collection, doc, setDoc } = window._fbModules;
+  const { collection, doc, setDoc, deleteDoc } = window._fbModules;
   const db = window._db;
   try {
+    // Save/update ทุก order ใน allOrders ไปยัง Firestore
     for(const o of allOrders){
       await setDoc(doc(db, "orders", String(o.id)), o);
     }
   } catch(err){
-    console.error('Firebase saveOrders error:', err);
-    const notice = document.getElementById('fb-status');
-    if(notice){ notice.textContent = '⚠️ บันทึกไม่สำเร็จ: ' + err.message; notice.style.display='block'; setTimeout(()=>notice.style.display='none', 5000); }
+    console.warn('Firebase saveOrders error:', err);
   }
 }
 
@@ -595,28 +601,21 @@ async function deleteOneOrder(id){
 }
 
 function loadOrders(){
-  // Firebase onSnapshot จะ sync allOrders ให้อัตโนมัติ
-  // ฟังก์ชันนี้เก็บไว้เพื่อ compatibility กับการเรียก init
+  // ไม่ต้องทำอะไรแล้ว — Firebase onSnapshot จะ sync ให้อัตโนมัติ
 }
 
-// ---- ซ่อน loading overlay เมื่อ Firebase พร้อม ----
-window.addEventListener('fbReady', () => {
-  // รอ snapshot รอบแรกสักครู่ก่อนซ่อน loading
-  setTimeout(() => {
-    const loading = document.getElementById('fb-loading');
-    if(loading) loading.style.display = 'none';
-  }, 1500);
-});
-
-// ---- ถ้า Firebase ไม่ตอบใน 8 วินาที แสดง error ----
-setTimeout(() => {
-  const loading = document.getElementById('fb-loading');
-  if(loading && loading.style.display !== 'none') {
-    loading.innerHTML = '❌ เชื่อมต่อ Firebase ไม่ได้<br><small style="font-size:12px;font-weight:400">กรุณาตรวจสอบ Security Rules และ internet</small>';
-    loading.style.background = 'rgba(255,255,255,0.95)';
-    loading.style.color = '#c0392b';
+// [FIX BUG 2] บันทึก settings (เมนู, ส่วนลด, ช่องทางชำระ) ไป Firestore
+async function saveSettings(){
+  if(!window._fbReady) return;
+  const { doc, setDoc } = window._fbModules;
+  try {
+    await setDoc(doc(window._db, "settings", "config"), {
+      mainMenus, specialMenus, discounts, payMethods
+    });
+  } catch(err) {
+    console.warn('Firebase saveSettings error:', err);
   }
-}, 8000);
+}
 function getPenaltyValue(){
   const el = document.getElementById('penalty-val');
   return el ? (parseInt(el.value,10) || 0) : 0;
@@ -1025,11 +1024,7 @@ function cancelTable(){
   const pending=getPendingOrder(selectedTable);
   if(!pending){alert('ไม่มีออร์เดอร์ค้างในโต๊ะนี้');return;}
   if(!confirm(`⚠️ ยืนยันยกเลิกโต๊ะ ${selectedTable}?\nออร์เดอร์ทั้งหมดจะถูกลบและไม่สามารถกู้คืนได้`)) return;
-  const toRemove = allOrders.filter(o=>o.table===selectedTable && o.status==='ยังไม่จ่าย');
-  toRemove.forEach(o => {
-    allOrders.splice(allOrders.indexOf(o), 1);
-    deleteOneOrder(o.id);
-  });
+  allOrders=allOrders.filter(o=>!(o.table===selectedTable && o.status==='ยังไม่จ่าย'));
   clearOrder();
   saveOrders();
   renderTmap();
@@ -1119,9 +1114,7 @@ function doSplitItems(){
     });
   }
   if(!sourcePending.items.length){
-    const idx = allOrders.indexOf(sourcePending);
-    if(idx > -1) allOrders.splice(idx, 1);
-    deleteOneOrder(sourcePending.id);
+    allOrders=allOrders.filter(o=>o!==sourcePending);
     currentOrder=[];
   } else {
     currentOrder=sourcePending.items.map(item=>({...item}));
@@ -1198,11 +1191,7 @@ function doMergeTable(){
     targetPending.penalty=(targetPending.penalty||0)+(sourcePending.penalty||0);
     targetPending.total=Math.max(0,newSub-targetPending.discAmt+targetPending.penalty);
     // Remove source pending order
-    const toRemoveMerge = allOrders.filter(o=>o.table===source && o.status==='ยังไม่จ่าย');
-    toRemoveMerge.forEach(o => {
-      allOrders.splice(allOrders.indexOf(o), 1);
-      deleteOneOrder(o.id);
-    });
+    allOrders=allOrders.filter(o=>!(o.table===source && o.status==='ยังไม่จ่าย'));
   } else {
     // No target pending, just move source here
     sourcePending.table=selectedTable;
@@ -1318,24 +1307,21 @@ function openClearHistoryModal(){
 }
 function doClearHistory(){
   const now=new Date();
-  const toDelete = allOrders.filter(o=>{
-    if(o.status==='ยังไม่จ่าย') return false;
+  allOrders=allOrders.filter(o=>{
+    if(o.status==='ยังไม่จ่าย') return true; // always keep pending
     const ts=o.timestamp;
-    if(!ts) return true;
+    if(!ts) return false;
     const d=new Date(ts);
     if(summaryPeriod==='day'){
-      return d.getDate()===now.getDate()&&d.getMonth()===now.getMonth()&&d.getFullYear()===now.getFullYear();
+      return !(d.getDate()===now.getDate()&&d.getMonth()===now.getMonth()&&d.getFullYear()===now.getFullYear());
     } else if(summaryPeriod==='week'){
-      return (now-d)<7*24*3600000;
+      return !((now-d)<7*24*3600000);
     } else {
-      return d.getMonth()===now.getMonth()&&d.getFullYear()===now.getFullYear();
+      return !(d.getMonth()===now.getMonth()&&d.getFullYear()===now.getFullYear());
     }
   });
-  toDelete.forEach(o => {
-    allOrders.splice(allOrders.indexOf(o), 1);
-    deleteOneOrder(o.id);
-  });
   closeAllModals();
+  saveOrders();
   renderSummary();
   renderTmap();
   alert('🗑 ล้างประวัติเรียบร้อย');
@@ -1412,7 +1398,7 @@ function addMainMenu(){
   if(!name||!price){alert('กรุณากรอกชื่อและราคา');return;}
   mainMenus.push({id:uid(),name,price,cat:'main'});
   document.getElementById('nm-name').value='';document.getElementById('nm-price').value='';
-  renderSettings();renderMenuGrid();
+  renderSettings();renderMenuGrid();saveSettings();
 }
 function addSpecialMenu(){
   const name=document.getElementById('ns-name').value.trim();
@@ -1420,7 +1406,7 @@ function addSpecialMenu(){
   if(!name||!price){alert('กรุณากรอกชื่อและราคา');return;}
   specialMenus.push({id:uid(),name,price,cat:'special'});
   document.getElementById('ns-name').value='';document.getElementById('ns-price').value='';
-  renderSettings();renderMenuGrid();
+  renderSettings();renderMenuGrid();saveSettings();
 }
 function addDiscount(){
   const name=document.getElementById('nd-name').value.trim();
@@ -1429,19 +1415,19 @@ function addDiscount(){
   if(!name||!amt){alert('กรุณากรอกชื่อและจำนวน');return;}
   discounts.push({id:uid(),name,amt,type});
   document.getElementById('nd-name').value='';document.getElementById('nd-amt').value='';
-  renderSettings();
+  renderSettings();saveSettings();
 }
 function delMenu(id,cat){
   if(!confirm('ลบเมนูนี้?'))return;
   if(cat==='main')mainMenus=mainMenus.filter(x=>x.id!==id);
   else specialMenus=specialMenus.filter(x=>x.id!==id);
-  renderSettings();renderMenuGrid();
+  renderSettings();renderMenuGrid();saveSettings();
 }
 function delDiscount(id){
   if(!confirm('ลบส่วนลดนี้?'))return;
   discounts=discounts.filter(x=>x.id!==id);
   if(selectedDiscId===id){selectedDiscId=null;recalc();}
-  renderSettings();
+  renderSettings();saveSettings();
 }
 let modalCtx2=null;
 function editMenu(id,cat){
@@ -1490,7 +1476,7 @@ function saveModal(){
     d.amt=parseInt(document.getElementById('m-price').value)||0;
     d.type=document.getElementById('m-type').value;
   }
-  closeModal();renderSettings();renderMenuGrid();renderPayGrid();
+  closeModal();renderSettings();renderMenuGrid();renderPayGrid();saveSettings();
 }
 
 // ===== VOID BILL =====
@@ -1538,7 +1524,7 @@ function addPayMethod(){
   if(payMethods.find(p=>p.name===name)){alert('ชื่อช่องทางนี้มีอยู่แล้ว');return;}
   payMethods.push({id:uid(),name});
   document.getElementById('np-name').value='';
-  renderSettings();renderPayGrid();
+  renderSettings();renderPayGrid();saveSettings();
 }
 function delPayMethod(id){
   if(payMethods.length<=1){alert('ต้องมีช่องทางชำระอย่างน้อย 1 ช่องทาง');return;}
@@ -1546,7 +1532,7 @@ function delPayMethod(id){
   const p=payMethods.find(x=>x.id===id);
   payMethods=payMethods.filter(x=>x.id!==id);
   if(selectedPay===p.name) selectedPay=payMethods[0].name;
-  renderSettings();renderPayGrid();
+  renderSettings();renderPayGrid();saveSettings();
 }
 function editPayMethod(id){
   const p=payMethods.find(x=>x.id===id);
@@ -1570,13 +1556,18 @@ renderPayGrid();
 
 // ===== EXPOSE GLOBALS สำหรับ Firebase onSnapshot =====
 window.allOrders = allOrders;
+window.mainMenus = mainMenus;
+window.specialMenus = specialMenus;
+window.discounts = discounts;
+window.payMethods = payMethods;
 window.syncOidCounter = syncOidCounter;
 window.renderTmap = renderTmap;
 window.renderSummary = renderSummary;
-
-// ===== อัปเดต window globals ทุกครั้งที่ allOrders เปลี่ยน =====
-// (ทำผ่าน window._setAllOrders ที่ Firebase module เรียกใช้)
+window.renderMenuGrid = renderMenuGrid;
+window.renderMenuCats = renderMenuCats;
+window.renderDiscChips = renderDiscChips;
+window.renderPayGrid = renderPayGrid;
+window.renderSettings = renderSettings;
 </script>
-  
 </body>
 </html>
