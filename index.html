@@ -551,7 +551,7 @@ let splitPayments = [];
 const ORDERS_STORAGE_KEY = 'buffet_pos_v4_allOrders';
 
 // ===== UTILS =====
-function uid(){return 'id_'+(++oidCounter)}
+function uid(){return 'o'+(++oidCounter)}
 function fmt(n){return '฿'+(Math.round(n)||0).toLocaleString()}
 function syncOidCounter(){
   const maxId = allOrders.reduce((max,o)=>{
@@ -927,6 +927,7 @@ function saveOrder(){
   const items=currentOrder.map(x=>({id:x.id,name:x.name,price:x.price,qty:x.qty,cat:x.cat||'main'}));
 
   const pending=getPendingOrder(selectedTable);
+  let savedOrder;
   if(pending){
     // Update existing pending order
     pending.items=items;
@@ -936,18 +937,19 @@ function saveOrder(){
     pending.penalty=penalty;
     pending.total=total;
     pending.timestamp=now;
+    savedOrder = {...pending};
   } else {
     // Create new order + start timer
-    allOrders.push({
-      id:uid(),table:selectedTable,items,pay:'',
+    savedOrder = {
+      id:'o'+(++oidCounter),table:selectedTable,items,pay:'',
       discId:selectedDiscId,discName,discAmt,penalty,total,
       status:'ยังไม่จ่าย',timestamp:now,openTime:now
-    });
+    };
+    allOrders.push(savedOrder);
   }
+  // บันทึก Firestore ก่อน clearOrder เพื่อป้องกัน race condition กับ onSnapshot
+  saveOneOrder({...savedOrder});
   clearOrder();
-  // บันทึก order เดี่ยวที่เพิ่ง create/update
-  const saved = getPendingOrder(selectedTable) || allOrders[allOrders.length-1];
-  if(saved) saveOneOrder(saved);
   renderTmap();
   updateSidebarHead();
   alert(`💾 บันทึกออร์เดอร์โต๊ะ ${selectedTable} เรียบร้อย`);
@@ -997,15 +999,15 @@ function confirmPay(){
     alert(`✅ ชำระเงินโต๊ะ ${selectedTable} ${fmt(paidTotal)} (${selectedPay}) เรียบร้อย!`);
   } else {
     // No existing pending, pay directly
-    allOrders.push({
-      id:uid(),table:selectedTable,items,pay:paymentPayload.payText,
+    const newOrder = {
+      id:'o'+(++oidCounter),table:selectedTable,items,pay:paymentPayload.payText,
       paymentBreakdown:paymentPayload.paymentBreakdown,
       discId:selectedDiscId,discName,discAmt:itemDisc,penalty:itemPenalty,total,
       status:'จ่ายแล้ว',timestamp:now,openTime:now,paidAt:now
-    });
-    const newOrder = allOrders[allOrders.length-1];
+    };
+    allOrders.push(newOrder);
+    saveOneOrder({...newOrder});
     clearOrder();
-    if(newOrder) saveOneOrder(newOrder);
     renderTmap();
     updateSidebarHead();
     alert(`✅ ชำระเงินโต๊ะ ${selectedTable} ${fmt(total)} (${selectedPay}) เรียบร้อย!`);
