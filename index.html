@@ -6,6 +6,7 @@
 <title>Buffet POS</title>
 
 <!-- Firebase SDK v10 -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
   import {
@@ -178,9 +179,14 @@ body{font-family:'Sarabun',sans-serif;font-size:14px;color:var(--color-text-prim
 .add-btn{padding:6px 14px;border-radius:8px;background:var(--c-orange);color:#fff;border:none;font-size:13px;cursor:pointer;font-weight:600;font-family:'Sarabun',sans-serif}
 
 /* SUMMARY */
-.period-tabs{display:flex;gap:6px;margin-bottom:12px}
+.period-tabs{display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap}
 .period-tab{padding:5px 16px;border-radius:20px;font-size:12px;cursor:pointer;border:1.5px solid var(--c-border);background:var(--c-bg);color:var(--c-gray);font-weight:500;transition:all 0.15s}
 .period-tab.active{background:var(--c-orange);color:#fff;border-color:var(--c-orange)}
+.date-picker-bar{display:flex;align-items:center;gap:8px;margin-bottom:12px;padding:10px 12px;background:var(--c-bg);border:1px solid var(--c-border);border-radius:10px;flex-wrap:wrap}
+.date-picker-bar label{font-size:11px;font-weight:600;color:var(--c-gray);white-space:nowrap}
+.date-picker-bar input,.date-picker-bar select{padding:5px 9px;border-radius:7px;border:1px solid var(--c-border);font-size:12px;background:var(--c-bg2);color:var(--color-text-primary);font-family:'Sarabun',sans-serif}
+.date-apply-btn{padding:5px 14px;border-radius:7px;background:var(--c-orange);color:#fff;border:none;font-size:12px;cursor:pointer;font-weight:600;font-family:'Sarabun',sans-serif;white-space:nowrap}
+.date-reset-btn{padding:5px 10px;border-radius:7px;background:var(--c-bg2);color:var(--c-gray);border:1px solid var(--c-border);font-size:12px;cursor:pointer;font-family:'Sarabun',sans-serif;white-space:nowrap}
 .sum-filters{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0 12px}
 .sum-filter{padding:4px 12px;border-radius:20px;font-size:11px;cursor:pointer;border:1.5px solid var(--c-border);background:var(--c-bg);color:var(--c-gray);font-weight:500}
 .sum-filter.active{background:var(--c-blue);color:#fff;border-color:var(--c-blue)}
@@ -265,6 +271,29 @@ body{font-family:'Sarabun',sans-serif;font-size:14px;color:var(--color-text-prim
           <div class="period-tab active" id="ptab-day" onclick="setSummaryPeriod('day')">📅 วันนี้</div>
           <div class="period-tab" id="ptab-week" onclick="setSummaryPeriod('week')">📆 สัปดาห์นี้</div>
           <div class="period-tab" id="ptab-month" onclick="setSummaryPeriod('month')">🗓️ เดือนนี้</div>
+          <div class="period-tab" id="ptab-year" onclick="setSummaryPeriod('year')">📊 ปีนี้</div>
+          <div class="period-tab" id="ptab-custom" onclick="setSummaryPeriod('custom')">🗂️ กำหนดเอง</div>
+        </div>
+        <!-- Custom Date Picker -->
+        <div class="date-picker-bar" id="date-picker-bar" style="display:none">
+          <label>โหมด</label>
+          <select id="custom-mode" onchange="onCustomModeChange()">
+            <option value="range">ช่วงวันที่</option>
+            <option value="month">รายเดือน</option>
+            <option value="year">รายปี</option>
+          </select>
+          <div id="custom-range-inputs" style="display:flex;align-items:center;gap:6px">
+            <label>จาก</label><input type="date" id="custom-from">
+            <label>ถึง</label><input type="date" id="custom-to">
+          </div>
+          <div id="custom-month-inputs" style="display:none;align-items:center;gap:6px">
+            <label>เดือน</label><input type="month" id="custom-month">
+          </div>
+          <div id="custom-year-inputs" style="display:none;align-items:center;gap:6px">
+            <label>ปี</label><select id="custom-year"></select>
+          </div>
+          <button class="date-apply-btn" onclick="applyCustomDate()">✓ ดูข้อมูล</button>
+          <button class="date-reset-btn" onclick="setSummaryPeriod('day')">รีเซ็ต</button>
         </div>
         <div class="sum-filters" id="sum-filters"></div>
         <div class="sum-stats" id="sum-stats"></div>
@@ -272,14 +301,14 @@ body{font-family:'Sarabun',sans-serif;font-size:14px;color:var(--color-text-prim
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
           <span style="font-size:13px;font-weight:600">รายการออร์เดอร์</span>
           <div style="display:flex;gap:6px">
-            <button class="dl-btn" onclick="downloadExcel()">⬇ Excel</button>
+            <button class="dl-btn" onclick="downloadExcel()">⬇ Excel (.xlsx)</button>
             <button class="clear-btn" onclick="openClearHistoryModal()">🗑 ล้างประวัติ</button>
           </div>
         </div>
         <div style="overflow-x:auto">
           <table class="orders-tbl" id="orders-tbl">
             <thead><tr>
-              <th>#</th><th>โต๊ะ</th><th>เมนู</th><th>จำนวน</th><th>ส่วนลด</th><th>แพลตฟอร์ม</th><th>ยอด</th><th>ชำระ</th><th>สถานะ</th>
+              <th>#</th><th>โต๊ะ</th><th>เมนู</th><th>จำนวน</th><th>ส่วนลด</th><th>แพลตฟอร์ม</th><th>ยอด</th><th>ชำระ</th><th>เวลาเช็คบิล</th><th>สถานะ</th>
             </tr></thead>
             <tbody id="orders-tbody"></tbody>
           </table>
@@ -548,6 +577,9 @@ let summaryPeriod = 'day';
 let summaryStatusFilter = 'all';
 let voidOrderId = null;
 let splitPayments = [];
+let customDateFrom = null;
+let customDateTo = null;
+let customDateMode = 'range';
 const ORDERS_STORAGE_KEY = 'buffet_pos_v4_allOrders';
 
 // ===== UTILS =====
@@ -929,7 +961,6 @@ function saveOrder(){
   const pending=getPendingOrder(selectedTable);
   let savedOrder;
   if(pending){
-    // Update existing pending order
     pending.items=items;
     pending.discId=selectedDiscId;
     pending.discName=discName;
@@ -939,7 +970,6 @@ function saveOrder(){
     pending.timestamp=now;
     savedOrder = {...pending};
   } else {
-    // Create new order + start timer
     savedOrder = {
       id:'o'+(++oidCounter),table:selectedTable,items,pay:'',
       discId:selectedDiscId,discName,discAmt,penalty,total,
@@ -947,7 +977,6 @@ function saveOrder(){
     };
     allOrders.push(savedOrder);
   }
-  // บันทึก Firestore ก่อน clearOrder เพื่อป้องกัน race condition กับ onSnapshot
   saveOneOrder({...savedOrder});
   clearOrder();
   renderTmap();
@@ -1222,7 +1251,53 @@ function doMergeTable(){
 function setSummaryPeriod(p){
   summaryPeriod=p;
   document.querySelectorAll('.period-tab').forEach(t=>t.classList.remove('active'));
-  document.getElementById('ptab-'+p).classList.add('active');
+  const tab=document.getElementById('ptab-'+p);
+  if(tab) tab.classList.add('active');
+  const bar=document.getElementById('date-picker-bar');
+  if(p==='custom'){bar.style.display='flex';initCustomDatePicker();}
+  else{bar.style.display='none';renderSummary();}
+}
+function initCustomDatePicker(){
+  const yearSel=document.getElementById('custom-year');
+  if(!yearSel.options.length){
+    const nowY=new Date().getFullYear();
+    for(let y=nowY;y>=nowY-5;y--){
+      const opt=document.createElement('option');
+      opt.value=y;opt.textContent=(y+543)+' ('+y+')';
+      yearSel.appendChild(opt);
+    }
+  }
+  const today=new Date().toISOString().slice(0,10);
+  if(!document.getElementById('custom-from').value)document.getElementById('custom-from').value=today;
+  if(!document.getElementById('custom-to').value)document.getElementById('custom-to').value=today;
+  onCustomModeChange();
+}
+function onCustomModeChange(){
+  const mode=document.getElementById('custom-mode').value;
+  customDateMode=mode;
+  document.getElementById('custom-range-inputs').style.display=mode==='range'?'flex':'none';
+  document.getElementById('custom-month-inputs').style.display=mode==='month'?'flex':'none';
+  document.getElementById('custom-year-inputs').style.display=mode==='year'?'flex':'none';
+}
+function applyCustomDate(){
+  const mode=document.getElementById('custom-mode').value;
+  customDateMode=mode;
+  if(mode==='range'){
+    const f=document.getElementById('custom-from').value;
+    const t=document.getElementById('custom-to').value;
+    if(!f||!t){alert('กรุณาเลือกวันที่เริ่มต้นและสิ้นสุด');return;}
+    customDateFrom=new Date(f+'T00:00:00');
+    customDateTo=new Date(t+'T23:59:59');
+  } else if(mode==='month'){
+    const m=document.getElementById('custom-month').value;
+    if(!m){alert('กรุณาเลือกเดือน');return;}
+    customDateFrom=new Date(m+'-01T00:00:00');
+    customDateTo=new Date(new Date(customDateFrom.getFullYear(),customDateFrom.getMonth()+1,0,23,59,59));
+  } else {
+    const y=parseInt(document.getElementById('custom-year').value);
+    customDateFrom=new Date(y+'-01-01T00:00:00');
+    customDateTo=new Date(y+'-12-31T23:59:59');
+  }
   renderSummary();
 }
 
@@ -1249,7 +1324,10 @@ function isOrderInPeriod(order, now){
   const d=new Date(ts);
   if(summaryPeriod==='day') return d.getDate()===now.getDate()&&d.getMonth()===now.getMonth()&&d.getFullYear()===now.getFullYear();
   if(summaryPeriod==='week') return (now-d)<7*24*3600000;
-  return d.getMonth()===now.getMonth()&&d.getFullYear()===now.getFullYear();
+  if(summaryPeriod==='month') return d.getMonth()===now.getMonth()&&d.getFullYear()===now.getFullYear();
+  if(summaryPeriod==='year') return d.getFullYear()===now.getFullYear();
+  if(summaryPeriod==='custom'&&customDateFrom&&customDateTo) return d>=customDateFrom&&d<=customDateTo;
+  return true;
 }
 
 function getFilteredOrders(){
@@ -1281,12 +1359,17 @@ function renderSummary(){
     '<div class="scard"><div class="slabel">บิลชำระแล้ว</div><div class="sval" style="color:var(--c-green)">'+paid.length+' บิล</div></div>'+
     '<div class="scard"><div class="slabel">ค้างชำระ</div><div class="sval" style="color:var(--c-amber)">'+fmt(pend)+'</div></div>'+
     '<div class="scard"><div class="slabel">Void | ส่วนลดรวม</div><div class="sval" style="color:var(--c-gray);font-size:16px">'+voided.length+' บิล | '+fmt(disc)+'</div></div>';
-  const periodLabel=summaryPeriod==='day'?'วันนี้':summaryPeriod==='week'?'สัปดาห์นี้':'เดือนนี้';
+  const periodLabel=summaryPeriod==='day'?'วันนี้':summaryPeriod==='week'?'สัปดาห์นี้':summaryPeriod==='month'?'เดือนนี้':summaryPeriod==='year'?'ปีนี้':
+    (customDateFrom&&customDateTo?customDateFrom.toLocaleDateString('th-TH',{day:'numeric',month:'short',year:'numeric'})+' – '+customDateTo.toLocaleDateString('th-TH',{day:'numeric',month:'short',year:'numeric'}):'กำหนดเอง');
   const renderOrderRow = (o, idx) => {
     const isVoid=o.status==='void';
     const isPaid=paidStatuses.includes(o.status);
     const voidBtn=isPaid?'<button onclick="openVoidModal(\''+o.id+'\')" style="margin-top:3px;display:block;padding:2px 8px;border-radius:5px;font-size:10px;cursor:pointer;border:1px solid #e57373;background:var(--c-red-light);color:var(--c-red);font-family:\'Sarabun\',sans-serif;font-weight:600">Void</button>':'';
     const voidNote=isVoid&&o.voidReason?'<div style="font-size:9px;color:var(--c-gray);margin-top:2px">'+o.voidReason+'</div>':'';
+    const paidAtTs = o.paidAt || (isVoid ? o.voidAt : null);
+    const paidAtStr = paidAtTs
+      ? new Date(paidAtTs).toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit',second:'2-digit'})
+      : (isPaid||isVoid ? '<span style="color:var(--c-gray)">-</span>' : '');
     return '<tr'+(isVoid?' style="opacity:0.5"':'')+'>'+
       '<td style="color:var(--c-gray)">'+idx+'</td>'+
       '<td><b>T'+o.table+'</b></td>'+
@@ -1296,18 +1379,22 @@ function renderSummary(){
       '<td style="color:var(--c-gray);font-size:11px">'+(o.discName||'-')+'</td>'+
       '<td><b'+(isVoid?' style="text-decoration:line-through"':'')+'>'+fmt(o.total)+'</b></td>'+
       '<td style="font-size:11px">'+(o.pay||'-')+'</td>'+
+      '<td style="font-size:11px;color:var(--c-green);font-weight:600">'+paidAtStr+'</td>'+
       '<td><span class="badge '+(isVoid?'bdg-void':isPaid?'bdg-paid':'bdg-pending')+'">'+(isVoid?'Void':o.status)+'</span>'+voidNote+voidBtn+'</td>'+
     '</tr>';
   };
+  // เรียง paid ตามเวลาเช็คบิล (paidAt) ล่าสุดขึ้นก่อน
+  const paidSorted = [...paid].sort((a,b)=>(b.paidAt||b.timestamp||0)-(a.paidAt||a.timestamp||0));
+  const voidSorted = [...voided].sort((a,b)=>(b.paidAt||b.voidAt||b.timestamp||0)-(a.paidAt||a.voidAt||a.timestamp||0));
   const groups = [
-    {label:'จ่ายแล้ว', rows:paid},
+    {label:'จ่ายแล้ว', rows:paidSorted},
     {label:'ยังไม่จ่าย', rows:pending},
-    {label:'Void', rows:voided}
+    {label:'Void', rows:voidSorted}
   ].filter(g=>g.rows.length);
   let index = 1;
   document.getElementById('orders-tbody').innerHTML = orders.length
-    ? groups.map(group => '<tr class="summary-group-row"><td colspan="9">'+group.label+' ('+group.rows.length+')</td></tr>' + group.rows.map(o=>renderOrderRow(o, index++)).join('')).join('')
-    : '<tr><td colspan="9" style="text-align:center;color:var(--c-gray);padding:20px">ไม่มีข้อมูล'+periodLabel+'</td></tr>';
+    ? groups.map(group => '<tr class="summary-group-row"><td colspan="10">'+group.label+' ('+group.rows.length+')</td></tr>' + group.rows.map(o=>renderOrderRow(o, index++)).join('')).join('')
+    : '<tr><td colspan="10" style="text-align:center;color:var(--c-gray);padding:20px">ไม่มีข้อมูล'+periodLabel+'</td></tr>';
 }
 // ===== CLEAR HISTORY =====
 function openClearHistoryModal(){
@@ -1352,33 +1439,73 @@ document.querySelectorAll('.modal-overlay').forEach(m=>{
   m.addEventListener('click',e=>{if(e.target===m)closeAllModals();});
 });
 
-// ===== EXCEL DOWNLOAD =====
+// ===== EXCEL DOWNLOAD (XLSX) =====
 function downloadExcel(){
+  if(typeof XLSX==='undefined'){alert('กำลังโหลด library กรุณารอสักครู่แล้วลองใหม่');return;}
   const now=new Date();
   const dateStr=now.toLocaleDateString('th-TH',{day:'numeric',month:'short',year:'numeric'});
   const orders=getFilteredOrders();
-  const rows=[
-    ['สรุปยอดขาย','','วันที่: '+dateStr],
-    [],
-    ['#','โต๊ะ','เมนู','จำนวน','ราคารวมก่อนลด','ส่วนลด','ชื่อส่วนลด','ยอดสุทธิ','ช่องทางชำระ','สถานะ'],
-  ];
-  orders.forEach((o,i)=>{
-    const sub=o.items.reduce((a,x)=>a+x.price*x.qty,0);
-    rows.push([i+1,'T'+o.table,o.items.map(x=>x.name+(x.qty>1?` x${x.qty}`:'')).join(', '),o.items.reduce((a,x)=>a+x.qty,0),sub,o.discAmt||0,o.discName||'',o.total,o.pay||'',o.status]);
-  });
-  const paid=orders.filter(o=>o.status==='จ่ายแล้ว');
+  const paidStatuses=['จ่ายแล้ว'];
+  const paid=orders.filter(o=>paidStatuses.includes(o.status));
   const rev=paid.reduce((a,o)=>a+o.total,0);
-  const totalDisc=orders.reduce((a,o)=>a+o.discAmt,0);
-  rows.push([]);
-  rows.push(['','','','','ยอดขายรวม','','','',rev,'']);
-  rows.push(['','','','','ส่วนลดรวม','','','',totalDisc,'']);
-  rows.push(['','','','','จำนวนบิลชำระแล้ว','','','',paid.length,'']);
-  const bom='\uFEFF';
-  const csv=bom+rows.map(r=>r.map(c=>{const s=String(c??'');return s.includes(',')||s.includes('"')||s.includes('\n')?`"${s.replace(/"/g,'""')}"`:s;}).join(',')).join('\n');
-  const a=document.createElement('a');
-  a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);
-  a.download=`buffet_pos_${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}.csv`;
-  a.click();
+  const totalDisc=orders.reduce((a,o)=>a+(o.discAmt||0),0);
+
+  // Sheet 1: รายการออร์เดอร์
+  const wsData=[];
+  wsData.push(['สรุปยอดขาย Buffet POS','','','วันที่ Export: '+dateStr,'','','','','','','']);
+  wsData.push([]);
+  wsData.push(['#','โต๊ะ','เมนู','จำนวน','ราคารวมก่อนลด','ส่วนลด (฿)','ชื่อส่วนลด','ยอดสุทธิ (฿)','ช่องทางชำระ','เวลาเช็คบิล','สถานะ']);
+
+  // เรียงตาม paidAt เหมือนในหน้าจอ
+  const paidSorted=[...paid].sort((a,b)=>(b.paidAt||b.timestamp||0)-(a.paidAt||a.timestamp||0));
+  const pending=orders.filter(o=>o.status==='ยังไม่จ่าย');
+  const voided=orders.filter(o=>o.status==='void').sort((a,b)=>(b.paidAt||b.voidAt||b.timestamp||0)-(a.paidAt||a.voidAt||a.timestamp||0));
+  const sorted=[...paidSorted,...pending,...voided];
+
+  sorted.forEach((o,i)=>{
+    const sub=o.items.reduce((a,x)=>a+x.price*x.qty,0);
+    const paidAtTs=o.paidAt||(o.status==='void'?o.voidAt:null);
+    const paidAtStr=paidAtTs?new Date(paidAtTs).toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit',second:'2-digit'}):'';
+    wsData.push([
+      i+1,'T'+o.table,
+      o.items.map(x=>x.name+(x.qty>1?` x${x.qty}`:'')).join(', '),
+      o.items.reduce((a,x)=>a+x.qty,0),
+      sub,o.discAmt||0,o.discName||'',o.total,
+      o.pay||'',paidAtStr,o.status
+    ]);
+  });
+
+  wsData.push([]);
+  wsData.push(['','','','','','','','ยอดขายรวม (ชำระแล้ว)',rev,'','']);
+  wsData.push(['','','','','','','','ส่วนลดรวม',totalDisc,'','']);
+  wsData.push(['','','','','','','','จำนวนบิลชำระแล้ว',paid.length,'','']);
+  wsData.push(['','','','','','','','จำนวนบิลทั้งหมด',orders.length,'','']);
+
+  const ws=XLSX.utils.aoa_to_sheet(wsData);
+  ws['!cols']=[{wch:4},{wch:6},{wch:45},{wch:8},{wch:16},{wch:12},{wch:16},{wch:14},{wch:22},{wch:14},{wch:12}];
+
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,'สรุปยอดขาย');
+
+  // Sheet 2: สรุปช่องทางชำระ
+  const payMap={};
+  paid.forEach(o=>{
+    const pays=o.paymentBreakdown||[{method:o.pay,amount:o.total}];
+    pays.forEach(p=>{if(p.method)payMap[p.method]=(payMap[p.method]||0)+p.amount;});
+  });
+  const ws2Data=[['ช่องทางชำระ','ยอดรวม (฿)','จำนวนบิล']];
+  Object.entries(payMap).forEach(([m,a])=>{
+    const cnt=paid.filter(o=>(o.paymentBreakdown||[{method:o.pay}]).some(p=>p.method===m)).length;
+    ws2Data.push([m,a,cnt]);
+  });
+  ws2Data.push([]);
+  ws2Data.push(['รวมทั้งหมด',rev,paid.length]);
+  const ws2=XLSX.utils.aoa_to_sheet(ws2Data);
+  ws2['!cols']=[{wch:22},{wch:16},{wch:12}];
+  XLSX.utils.book_append_sheet(wb,ws2,'สรุปช่องทางชำระ');
+
+  const fname=`buffet_pos_${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}.xlsx`;
+  XLSX.writeFile(wb,fname);
 }
 
 // ===== SETTINGS =====
