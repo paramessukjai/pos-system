@@ -241,6 +241,8 @@ body{font-family:'Sarabun',sans-serif;font-size:14px;color:var(--color-text-prim
     <div class="nav-tab active" onclick="navTo('order',this)">📋 ออร์เดอร์</div>
     <div class="nav-tab" onclick="navTo('summary',this)">📊 สรุปยอด</div>
     <div class="nav-tab" onclick="navTo('settings',this)">⚙️ ตั้งค่า</div>
+    <div class="nav-tab" onclick="navTo('menu-summary',this)">🍽️ สรุปเมนู</div>
+    <div class="nav-tab" onclick="navTo('hr',this)">👤 HR</div>
     <span id="clock" style="margin-left:auto;font-size:12px;color:var(--c-gray)"></span>
   </div>
   <div class="body">
@@ -357,6 +359,96 @@ body{font-family:'Sarabun',sans-serif;font-size:14px;color:var(--color-text-prim
             <button class="add-btn" onclick="addDiscount()">+ เพิ่ม</button>
           </div>
         </div>
+        <!-- RECEIPT SETTINGS -->
+        <div class="set-section">
+          <h3>&#x1F5A8;&#xFE0F; ตั้งค่าบิล / ใบเสร็จ</h3>
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <div><label style="font-size:12px;color:var(--c-gray);font-weight:600;display:block;margin-bottom:4px">ชื่อร้าน</label>
+              <input type="text" id="rcpt-name" style="width:100%;padding:7px 10px;border-radius:8px;border:1px solid var(--c-border);font-size:13px;background:var(--c-bg);color:var(--color-text-primary);font-family:'Sarabun',sans-serif" placeholder="เช่น Buffet Na Ja"></div>
+            <div><label style="font-size:12px;color:var(--c-gray);font-weight:600;display:block;margin-bottom:4px">ที่อยู่ร้าน</label>
+              <textarea id="rcpt-addr" rows="2" style="width:100%;padding:7px 10px;border-radius:8px;border:1px solid var(--c-border);font-size:13px;background:var(--c-bg);color:var(--color-text-primary);font-family:'Sarabun',sans-serif;resize:vertical" placeholder="เช่น 123 ถ.สุขุมวิท กรุงเทพฯ"></textarea></div>
+            <div><label style="font-size:12px;color:var(--c-gray);font-weight:600;display:block;margin-bottom:4px">เบอร์โทรศัพท์</label>
+              <input type="text" id="rcpt-tel" style="width:100%;padding:7px 10px;border-radius:8px;border:1px solid var(--c-border);font-size:13px;background:var(--c-bg);color:var(--color-text-primary);font-family:'Sarabun',sans-serif" placeholder="เช่น 02-123-4567"></div>
+            <div><label style="font-size:12px;color:var(--c-gray);font-weight:600;display:block;margin-bottom:4px">เลขผู้เสียภาษี (ถ้ามี)</label>
+              <input type="text" id="rcpt-taxid" style="width:100%;padding:7px 10px;border-radius:8px;border:1px solid var(--c-border);font-size:13px;background:var(--c-bg);color:var(--color-text-primary);font-family:'Sarabun',sans-serif" placeholder="เช่น 0-1234-56789-01-2"></div>
+            <div><label style="font-size:12px;color:var(--c-gray);font-weight:600;display:block;margin-bottom:4px">ข้อความท้ายบิล</label>
+              <textarea id="rcpt-footer" rows="2" style="width:100%;padding:7px 10px;border-radius:8px;border:1px solid var(--c-border);font-size:13px;background:var(--c-bg);color:var(--color-text-primary);font-family:'Sarabun',sans-serif;resize:vertical" placeholder="เช่น ขอบคุณที่ใช้บริการ 🙏"></textarea></div>
+            <div style="display:flex;gap:10px;flex-wrap:wrap">
+              <div style="flex:1;min-width:140px"><label style="font-size:12px;color:var(--c-gray);font-weight:600;display:block;margin-bottom:4px">WiFi / Social</label>
+                <input type="text" id="rcpt-wifi" style="width:100%;padding:7px 10px;border-radius:8px;border:1px solid var(--c-border);font-size:13px;background:var(--c-bg);color:var(--color-text-primary);font-family:'Sarabun',sans-serif" placeholder="เช่น WiFi: NaJaa / @najaa"></div>
+              <div style="flex:0 0 auto"><label style="font-size:12px;color:var(--c-gray);font-weight:600;display:block;margin-bottom:4px">แสดงเวลา</label>
+                <label style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:7px 0">
+                  <input type="checkbox" id="rcpt-showtime" checked style="width:16px;height:16px;cursor:pointer">
+                  <span style="font-size:13px">แสดงเวลาเช็คบิล</span>
+                </label>
+              </div>
+            </div>
+            <button class="add-btn" style="align-self:flex-start" onclick="saveReceiptSettings()">&#x1F4BE; บันทึกตั้งค่าบิล</button>
+          </div>
+        </div>
+      </div>
+
+
+      <!-- MENU SUMMARY PAGE -->
+      <div class="page" id="page-menu-summary">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+          <span style="font-size:16px;font-weight:700">🍽️ สรุปยอดขายแยกเมนู</span>
+          <span id="msummary-date" style="font-size:12px;color:var(--c-gray)"></span>
+        </div>
+        <div class="period-tabs" id="msummary-period-tabs">
+          <div class="period-tab active" id="mptab-day" onclick="setMenuSummaryPeriod('day')">📅 วันนี้</div>
+          <div class="period-tab" id="mptab-week" onclick="setMenuSummaryPeriod('week')">📆 สัปดาห์นี้</div>
+          <div class="period-tab" id="mptab-month" onclick="setMenuSummaryPeriod('month')">🗓️ เดือนนี้</div>
+          <div class="period-tab" id="mptab-all" onclick="setMenuSummaryPeriod('all')">📋 ทั้งหมด</div>
+        </div>
+        <div id="menu-summary-stats" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px"></div>
+        <div id="menu-summary-body"></div>
+      </div>
+
+      <!-- HR PAGE -->
+      <div class="page" id="page-hr">
+        <div style="font-size:16px;font-weight:700;margin-bottom:14px">👤 ระบบตอกบัตรพนักงาน</div>
+        <!-- Clock-in panel -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
+          <!-- Clock widget -->
+          <div style="background:var(--c-bg);border-radius:14px;border:0.5px solid var(--c-border);padding:18px;text-align:center">
+            <div id="hr-clock" style="font-size:28px;font-weight:700;color:var(--c-orange);font-family:'Kanit',sans-serif;letter-spacing:2px"></div>
+            <div id="hr-date" style="font-size:11px;color:var(--c-gray);margin-top:4px"></div>
+            <div style="margin-top:14px">
+              <div style="font-size:12px;color:var(--c-gray);margin-bottom:6px">เลือกพนักงาน</div>
+              <select id="hr-emp-sel" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--c-border);font-size:13px;background:var(--c-bg);color:var(--color-text-primary);font-family:'Sarabun',sans-serif;margin-bottom:10px"></select>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+                <button onclick="doClockAction('in')" style="padding:10px;background:var(--c-green);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:'Sarabun',sans-serif">✅ เข้างาน</button>
+                <button onclick="doClockAction('out')" style="padding:10px;background:var(--c-blue);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:'Sarabun',sans-serif">🏁 ออกงาน</button>
+              </div>
+            </div>
+          </div>
+          <!-- Today summary -->
+          <div style="background:var(--c-bg);border-radius:14px;border:0.5px solid var(--c-border);padding:14px">
+            <div style="font-size:12px;font-weight:700;color:var(--color-text-primary);margin-bottom:10px">สถานะวันนี้</div>
+            <div id="hr-today-status" style="display:flex;flex-direction:column;gap:6px"></div>
+          </div>
+        </div>
+        <!-- Attendance log tabs -->
+        <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;align-items:center;justify-content:space-between">
+          <div style="display:flex;gap:6px">
+            <button class="period-tab active" id="hrlog-tab-today" onclick="setHrLogTab('today')">วันนี้</button>
+            <button class="period-tab" id="hrlog-tab-week" onclick="setHrLogTab('week')">สัปดาห์</button>
+            <button class="period-tab" id="hrlog-tab-month" onclick="setHrLogTab('month')">เดือน</button>
+          </div>
+          <button onclick="downloadHrExcel()" class="dl-btn" style="font-size:11px;padding:5px 12px">⬇ Excel</button>
+        </div>
+        <div id="hr-log-body"></div>
+        <!-- Manage employees section -->
+        <div style="background:var(--c-bg);border-radius:12px;border:0.5px solid var(--c-border);padding:14px;margin-top:14px">
+          <div style="font-size:13px;font-weight:700;margin-bottom:10px">👥 จัดการพนักงาน</div>
+          <div id="hr-emp-list" style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px"></div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <input type="text" id="hr-new-name" placeholder="ชื่อพนักงาน" style="flex:1;min-width:120px;padding:7px 10px;border-radius:8px;border:1px solid var(--c-border);font-size:13px;background:var(--c-bg);color:var(--color-text-primary);font-family:'Sarabun',sans-serif">
+            <input type="text" id="hr-new-role" placeholder="ตำแหน่ง เช่น แคชเชียร์" style="flex:1;min-width:120px;padding:7px 10px;border-radius:8px;border:1px solid var(--c-border);font-size:13px;background:var(--c-bg);color:var(--color-text-primary);font-family:'Sarabun',sans-serif">
+            <button onclick="addEmployee()" class="add-btn">+ เพิ่ม</button>
+          </div>
+        </div>
       </div>
 
     </div><!-- /main -->
@@ -402,6 +494,7 @@ body{font-family:'Sarabun',sans-serif;font-size:14px;color:var(--color-text-prim
         <div class="sum-total"><span>ยอดสุทธิ</span><span id="s-total" style="color:var(--c-orange)">฿0</span></div>
         <button class="act-btn btn-save" onclick="saveOrder()">💾 บันทึก (ค้างชำระ)</button>
         <button class="act-btn btn-pay" id="btn-pay" onclick="confirmPay()">✓ ยืนยันชำระเงิน</button>
+        <button class="act-btn" id="btn-print" onclick="openPrintPreview()" style="background:var(--c-blue-light);color:var(--c-blue);border:1.5px solid #90caf9;margin-top:5px">🖨️ ปริ้นบิล</button>
       </div>
     </div>
   </div>
@@ -521,6 +614,45 @@ body{font-family:'Sarabun',sans-serif;font-size:14px;color:var(--color-text-prim
   </div>
 </div>
 
+
+<!-- Print Preview Modal -->
+<div class="modal-overlay" id="modal-print" style="align-items:flex-start;padding:20px;overflow-y:auto">
+  <div style="background:#fff;border-radius:16px;width:100%;max-width:420px;margin:auto;box-shadow:0 18px 50px rgba(0,0,0,0.25);color:#1f2937;overflow:hidden">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid #e5e7eb">
+      <span style="font-size:15px;font-weight:700">🖨️ ตัวอย่างบิล</span>
+      <button onclick="closeAllModals()" style="background:none;border:none;font-size:18px;cursor:pointer;color:#6b7280;line-height:1">✕</button>
+    </div>
+    <div style="padding:18px">
+      <!-- Bill Preview -->
+      <div id="bill-preview-wrap" style="background:#fff;border:1px dashed #d1d5db;border-radius:8px;padding:14px;margin-bottom:14px;font-family:'Courier New',Courier,monospace;font-size:12px;line-height:1.7;color:#111827;white-space:pre-wrap;word-break:break-word" id="bill-preview"></div>
+      <div style="display:flex;gap:8px">
+        <button onclick="doPrint()" style="flex:1;padding:10px;background:#e8620a;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:'Sarabun',sans-serif">🖨️ พิมพ์บิล</button>
+        <button onclick="closeAllModals()" style="flex:0 0 auto;padding:10px 16px;background:#f3f4f6;border:1px solid #d1d5db;border-radius:8px;font-size:13px;cursor:pointer;font-family:'Sarabun',sans-serif">ยกเลิก</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Print-only style (hidden div that gets printed) -->
+<div id="print-area" style="display:none"></div>
+<style>
+@media print {
+  body > *:not(#print-area) { display:none !important; }
+  #print-area {
+    display:block !important;
+    font-family:'Courier New',Courier,monospace;
+    font-size:12pt;
+    line-height:1.7;
+    color:#000;
+    white-space:pre-wrap;
+    word-break:break-word;
+    width:80mm;
+    margin:0;
+    padding:4mm;
+  }
+}
+</style>
+
 <script>
 // ===== CONSTANTS =====
 const DINE_DURATION = 90 * 60 * 1000; // 1 hr 30 min in ms
@@ -581,6 +713,141 @@ let customDateFrom = null;
 let customDateTo = null;
 let customDateMode = 'range';
 const ORDERS_STORAGE_KEY = 'buffet_pos_v4_allOrders';
+// ===== RECEIPT SETTINGS =====
+let receiptSettings = {
+  name: '',
+  addr: '',
+  tel: '',
+  taxid: '',
+  footer: 'ขอบคุณที่ใช้บริการ 🙏',
+  wifi: '',
+  showtime: true,
+};
+const RECEIPT_KEY = 'buffet_pos_receipt_settings';
+
+function loadReceiptSettings(){
+  try {
+    const s = localStorage.getItem(RECEIPT_KEY);
+    if(s) receiptSettings = {...receiptSettings, ...JSON.parse(s)};
+  } catch(e){}
+  applyReceiptSettingsToForm();
+}
+function applyReceiptSettingsToForm(){
+  const s = receiptSettings;
+  const set = (id, val) => { const el=document.getElementById(id); if(el) el.value = val||''; };
+  set('rcpt-name', s.name); set('rcpt-addr', s.addr); set('rcpt-tel', s.tel);
+  set('rcpt-taxid', s.taxid); set('rcpt-footer', s.footer); set('rcpt-wifi', s.wifi);
+  const cb = document.getElementById('rcpt-showtime');
+  if(cb) cb.checked = s.showtime !== false;
+}
+function saveReceiptSettings(){
+  receiptSettings = {
+    name: document.getElementById('rcpt-name').value.trim(),
+    addr: document.getElementById('rcpt-addr').value.trim(),
+    tel: document.getElementById('rcpt-tel').value.trim(),
+    taxid: document.getElementById('rcpt-taxid').value.trim(),
+    footer: document.getElementById('rcpt-footer').value.trim(),
+    wifi: document.getElementById('rcpt-wifi').value.trim(),
+    showtime: document.getElementById('rcpt-showtime').checked,
+  };
+  localStorage.setItem(RECEIPT_KEY, JSON.stringify(receiptSettings));
+  alert('✅ บันทึกการตั้งค่าบิลเรียบร้อย');
+}
+
+// ===== PRINT BILL =====
+function buildBillText(tableNo, items, discAmt, discName, penalty, total, payStr, paidAt){
+  const s = receiptSettings;
+  const width = 32; // chars per line for 80mm paper
+  const line  = '─'.repeat(width);
+  const dline = '═'.repeat(width);
+  const center = (str) => {
+    const pad = Math.max(0, Math.floor((width - str.length) / 2));
+    return ' '.repeat(pad) + str;
+  };
+  const rjust = (l, r) => {
+    const gap = width - l.length - r.length;
+    return l + ' '.repeat(Math.max(1, gap)) + r;
+  };
+
+  let bill = '';
+  // Header
+  if(s.name)   bill += center(s.name) + '\n';
+  else         bill += center('Buffet POS') + '\n';
+  if(s.addr)   s.addr.split('\n').forEach(ln => bill += center(ln) + '\n');
+  if(s.tel)    bill += center('Tel: ' + s.tel) + '\n';
+  if(s.taxid)  bill += center('Tax ID: ' + s.taxid) + '\n';
+  bill += dline + '\n';
+  // Order info
+  const now = paidAt ? new Date(paidAt) : new Date();
+  const dateStr = now.toLocaleDateString('th-TH', {day:'2-digit',month:'2-digit',year:'numeric'});
+  const timeStr = now.toLocaleTimeString('th-TH', {hour:'2-digit',minute:'2-digit'});
+  bill += rjust('โต๊ะ: T' + tableNo, 'วันที่: ' + dateStr) + '\n';
+  if(s.showtime) bill += rjust('', 'เวลา: ' + timeStr) + '\n';
+  bill += line + '\n';
+  bill += rjust('รายการ', 'ราคา') + '\n';
+  bill += line + '\n';
+  // Items
+  items.forEach(item => {
+    const priceStr = '฿' + (item.price * item.qty).toLocaleString();
+    const nameQty = item.name + (item.qty > 1 ? ' x' + item.qty : '');
+    if(nameQty.length + priceStr.length + 1 <= width){
+      bill += rjust(nameQty, priceStr) + '\n';
+    } else {
+      bill += nameQty + '\n';
+      bill += rjust('', priceStr) + '\n';
+    }
+    if(item.qty > 1){
+      bill += '  (' + item.qty + ' x ฿' + item.price.toLocaleString() + ')\n';
+    }
+  });
+  bill += line + '\n';
+  // Totals
+  const sub = items.reduce((a,x) => a + x.price * x.qty, 0);
+  bill += rjust('รวม', '฿' + sub.toLocaleString()) + '\n';
+  if(discAmt > 0) bill += rjust('ส่วนลด' + (discName?' ('+discName+')':''), '-฿' + discAmt.toLocaleString()) + '\n';
+  if(penalty > 0) bill += rjust('ค่าปรับ', '฿' + penalty.toLocaleString()) + '\n';
+  bill += dline + '\n';
+  bill += rjust('ยอดสุทธิ', '฿' + total.toLocaleString()) + '\n';
+  if(payStr) bill += rjust('ชำระโดย', payStr) + '\n';
+  bill += dline + '\n';
+  // Footer
+  if(s.wifi)   bill += center(s.wifi) + '\n';
+  if(s.footer) bill += center(s.footer) + '\n';
+  return bill;
+}
+
+function openPrintPreview(){
+  if(!selectedTable){ alert('กรุณาเลือกโต๊ะก่อน'); return; }
+  const pending = getPendingOrder(selectedTable);
+  const items = currentOrder.length ? currentOrder : (pending ? pending.items : []);
+  if(!items.length){ alert('ไม่มีรายการในออร์เดอร์'); return; }
+
+  const sub = items.reduce((a,x) => a + x.price * x.qty, 0);
+  const d = selectedDiscId ? discounts.find(x => x.id === selectedDiscId) : null;
+  const discAmt = d ? (d.type==='percent' ? Math.round(sub*d.amt/100) : d.amt) : (pending ? pending.discAmt||0 : customDisc);
+  const discName = d ? d.name : (pending ? pending.discName||'' : '');
+  const penalty = getPenaltyValue() || (pending ? pending.penalty||0 : 0);
+  const total = Math.max(0, sub - discAmt + penalty);
+  const payStr = pending ? (pending.pay||'') : selectedPay;
+  const paidAt = pending ? pending.paidAt : null;
+
+  const billText = buildBillText(selectedTable, items, discAmt, discName, penalty, total, payStr, paidAt);
+  document.getElementById('bill-preview-wrap').textContent = billText;
+  document.getElementById('print-area').textContent = billText;
+  document.getElementById('modal-print').style.display = 'flex';
+}
+
+function doPrint(){
+  const billText = document.getElementById('print-area').textContent;
+  const w = window.open('', '_blank', 'width=400,height=600');
+  w.document.write('<html><head><title>บิล</title><style>body{font-family:"Courier New",Courier,monospace;font-size:12pt;line-height:1.7;color:#000;white-space:pre-wrap;word-break:break-word;width:80mm;margin:0;padding:4mm}@media print{@page{margin:0;size:80mm auto}}</style></head><body>');
+  w.document.write(billText.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'));
+  w.document.write('</body></html>');
+  w.document.close();
+  w.focus();
+  setTimeout(() => { w.print(); w.close(); }, 300);
+}
+
 
 // ===== UTILS =====
 function uid(){return 'o'+(++oidCounter)}
@@ -737,6 +1004,8 @@ function navTo(page,el){
   el.classList.add('active');
   if(page==='summary')renderSummary();
   if(page==='settings')renderSettings();
+  if(page==='menu-summary')renderMenuSummary();
+  if(page==='hr'){renderHrEmpSelect();renderHrEmpList();renderHrTodayStatus();renderHrLog();}
 }
 
 // ===== TABLE MAP =====
@@ -1600,7 +1869,7 @@ function downloadExcel(){
 }
 
 // ===== SETTINGS =====
-function renderSettings(){renderSetMenus('main');renderSetMenus('special');renderSetDiscounts();renderSetPayMethods();}
+function renderSettings(){renderSetMenus('main');renderSetMenus('special');renderSetDiscounts();renderSetPayMethods();applyReceiptSettingsToForm();}
 function renderSetMenus(cat){
   const items=cat==='main'?mainMenus:specialMenus;
   const el=document.getElementById(`set-${cat}-menus`);
@@ -1781,8 +2050,318 @@ function editPayMethod(id){
   document.getElementById('modal').style.display='flex';
 }
 
+
+// ===== MENU SUMMARY =====
+let menuSummaryPeriod = 'day';
+
+function setMenuSummaryPeriod(p){
+  menuSummaryPeriod = p;
+  document.querySelectorAll('[id^="mptab-"]').forEach(t => t.classList.remove('active'));
+  const tab = document.getElementById('mptab-' + p);
+  if(tab) tab.classList.add('active');
+  renderMenuSummary();
+}
+
+function isOrderInMenuPeriod(order){
+  const now = new Date();
+  const ts = order.paidAt || order.timestamp;
+  if(!ts || menuSummaryPeriod === 'all') return true;
+  const d = new Date(ts);
+  if(menuSummaryPeriod === 'day') return d.getDate()===now.getDate()&&d.getMonth()===now.getMonth()&&d.getFullYear()===now.getFullYear();
+  if(menuSummaryPeriod === 'week') return (now - d) < 7*24*3600000;
+  if(menuSummaryPeriod === 'month') return d.getMonth()===now.getMonth()&&d.getFullYear()===now.getFullYear();
+  return true;
+}
+
+function renderMenuSummary(){
+  const now = new Date();
+  const dateEl = document.getElementById('msummary-date');
+  if(dateEl) dateEl.textContent = now.toLocaleDateString('th-TH',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+
+  // Collect paid orders for current period
+  const paidOrders = allOrders.filter(o => o.status==='จ่ายแล้ว' && isOrderInMenuPeriod(o));
+
+  // Aggregate by menu item
+  const menuMap = {}; // { name: { qty, revenue, cat } }
+  paidOrders.forEach(o => {
+    o.items.forEach(item => {
+      if(!menuMap[item.name]){
+        menuMap[item.name] = { qty:0, revenue:0, cat: item.cat||'main', price: item.price };
+      }
+      menuMap[item.name].qty += item.qty;
+      menuMap[item.name].revenue += item.price * item.qty;
+    });
+  });
+
+  const entries = Object.entries(menuMap).sort((a,b) => b[1].revenue - a[1].revenue);
+  const totalRev = entries.reduce((a,[,d]) => a + d.revenue, 0);
+  const totalQty = entries.reduce((a,[,d]) => a + d.qty, 0);
+  const maxRev = entries.length ? entries[0][1].revenue : 1;
+
+  // Stats cards
+  const statsEl = document.getElementById('menu-summary-stats');
+  if(statsEl) statsEl.innerHTML =
+    '<div class="scard"><div class="slabel">เมนูทั้งหมด</div><div class="sval" style="color:var(--c-orange)">' + entries.length + ' รายการ</div></div>' +
+    '<div class="scard"><div class="slabel">จำนวนที่ขายได้</div><div class="sval" style="color:var(--c-green)">' + totalQty.toLocaleString() + ' ชิ้น</div></div>' +
+    '<div class="scard"><div class="slabel">รายได้รวม</div><div class="sval" style="color:var(--c-orange)">' + fmt(totalRev) + '</div></div>' +
+    '<div class="scard"><div class="slabel">เฉลี่ย/เมนู</div><div class="sval" style="color:var(--c-blue)">' + fmt(entries.length ? Math.round(totalRev/entries.length) : 0) + '</div></div>';
+
+  // Body: group by cat
+  const mainItems = entries.filter(([,d]) => d.cat === 'main');
+  const specialItems = entries.filter(([,d]) => d.cat !== 'main');
+
+  const colors = ['#e8620a','#1565c0','#1a7a4a','#b7690a','#7b1fa2','#c62828','#00838f','#558b2f'];
+
+  function renderGroup(label, items, colorStart){
+    if(!items.length) return '';
+    let html = '<div style="background:var(--c-bg);border-radius:12px;border:0.5px solid var(--c-border);padding:14px;margin-bottom:12px">';
+    html += '<div style="font-size:13px;font-weight:700;margin-bottom:12px;color:var(--color-text-primary)">' + label + '</div>';
+    html += '<table style="width:100%;border-collapse:collapse;font-size:12px">';
+    html += '<thead><tr style="border-bottom:1.5px solid var(--c-border)">' +
+      '<th style="text-align:left;padding:5px 6px;color:var(--c-gray);font-weight:600">#</th>' +
+      '<th style="text-align:left;padding:5px 6px;color:var(--c-gray);font-weight:600">เมนู</th>' +
+      '<th style="text-align:right;padding:5px 6px;color:var(--c-gray);font-weight:600">จำนวน</th>' +
+      '<th style="text-align:right;padding:5px 6px;color:var(--c-gray);font-weight:600">ราคา/ชิ้น</th>' +
+      '<th style="text-align:right;padding:5px 6px;color:var(--c-gray);font-weight:600">รายได้</th>' +
+      '<th style="text-align:right;padding:5px 6px;color:var(--c-gray);font-weight:600">%</th>' +
+      '</tr></thead><tbody>';
+    items.forEach(([name, data], i) => {
+      const color = colors[(colorStart + i) % colors.length];
+      const pct = totalRev > 0 ? (data.revenue / totalRev * 100).toFixed(1) : '0.0';
+      const barW = maxRev > 0 ? Math.round(data.revenue / maxRev * 100) : 0;
+      html += '<tr style="border-bottom:0.5px solid var(--c-border)">' +
+        '<td style="padding:7px 6px;color:var(--c-gray)">' + (i+1) + '</td>' +
+        '<td style="padding:7px 6px"><div style="font-weight:600">' + name + '</div>' +
+          '<div style="height:4px;border-radius:2px;background:var(--c-bg2);margin-top:4px"><div style="height:100%;width:' + barW + '%;background:' + color + ';border-radius:2px"></div></div></td>' +
+        '<td style="padding:7px 6px;text-align:right;font-weight:600">' + data.qty.toLocaleString() + '</td>' +
+        '<td style="padding:7px 6px;text-align:right;color:var(--c-gray)">฿' + data.price.toLocaleString() + '</td>' +
+        '<td style="padding:7px 6px;text-align:right;font-weight:700;color:' + color + '">' + fmt(data.revenue) + '</td>' +
+        '<td style="padding:7px 6px;text-align:right;color:var(--c-gray)">' + pct + '%</td>' +
+        '</tr>';
+    });
+    // Subtotal row
+    const subTotal = items.reduce((a,[,d]) => a + d.revenue, 0);
+    const subQty = items.reduce((a,[,d]) => a + d.qty, 0);
+    html += '<tr style="background:var(--c-bg2);font-weight:700"><td colspan="2" style="padding:7px 6px">รวม</td>' +
+      '<td style="padding:7px 6px;text-align:right">' + subQty.toLocaleString() + '</td>' +
+      '<td></td><td style="padding:7px 6px;text-align:right;color:var(--c-orange)">' + fmt(subTotal) + '</td>' +
+      '<td style="padding:7px 6px;text-align:right">' + (totalRev>0?(subTotal/totalRev*100).toFixed(1):0) + '%</td></tr>';
+    html += '</tbody></table></div>';
+    return html;
+  }
+
+  const bodyEl = document.getElementById('menu-summary-body');
+  if(!bodyEl) return;
+  if(!entries.length){
+    bodyEl.innerHTML = '<div style="text-align:center;color:var(--c-gray);padding:30px">ไม่มีข้อมูลในช่วงเวลานี้</div>';
+    return;
+  }
+  bodyEl.innerHTML = renderGroup('🍽️ เมนูหลัก', mainItems, 0) + renderGroup('⭐ เมนูพิเศษ (Add-on)', specialItems, 3);
+}
+
+// ===== HR SYSTEM =====
+const HR_KEY = 'buffet_pos_hr';
+let employees = [];
+let attendanceLogs = []; // [{empId, empName, type:'in'|'out', ts}]
+let hrLogTab = 'today';
+
+function loadHrData(){
+  try {
+    const d = JSON.parse(localStorage.getItem(HR_KEY) || '{}');
+    employees = d.employees || [
+      {id:'e1', name:'สมชาย ใจดี', role:'แคชเชียร์'},
+      {id:'e2', name:'สมหญิง รักงาน', role:'พนักงานเสิร์ฟ'},
+    ];
+    attendanceLogs = d.logs || [];
+  } catch(e){ employees=[]; attendanceLogs=[]; }
+  renderHrEmpSelect();
+  renderHrEmpList();
+  renderHrTodayStatus();
+  renderHrLog();
+}
+
+function saveHrData(){
+  localStorage.setItem(HR_KEY, JSON.stringify({employees, logs: attendanceLogs}));
+}
+
+function addEmployee(){
+  const name = document.getElementById('hr-new-name').value.trim();
+  const role = document.getElementById('hr-new-role').value.trim();
+  if(!name){ alert('กรุณากรอกชื่อพนักงาน'); return; }
+  employees.push({id: 'e' + Date.now(), name, role: role||'พนักงาน'});
+  document.getElementById('hr-new-name').value = '';
+  document.getElementById('hr-new-role').value = '';
+  saveHrData();
+  renderHrEmpSelect();
+  renderHrEmpList();
+}
+
+function delEmployee(id){
+  if(!confirm('ลบพนักงานคนนี้?')) return;
+  employees = employees.filter(e => e.id !== id);
+  saveHrData();
+  renderHrEmpSelect();
+  renderHrEmpList();
+  renderHrTodayStatus();
+}
+
+function renderHrEmpSelect(){
+  const sel = document.getElementById('hr-emp-sel');
+  if(!sel) return;
+  sel.innerHTML = employees.map(e => `<option value="${e.id}">${e.name} (${e.role})</option>`).join('');
+}
+
+function renderHrEmpList(){
+  const el = document.getElementById('hr-emp-list');
+  if(!el) return;
+  if(!employees.length){ el.innerHTML = '<div style="color:var(--c-gray);font-size:12px">ยังไม่มีพนักงาน</div>'; return; }
+  el.innerHTML = employees.map(e => `
+    <div style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:var(--c-bg2);border-radius:8px;border:0.5px solid var(--c-border)">
+      <div style="width:32px;height:32px;border-radius:50%;background:var(--c-orange-light);display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0">👤</div>
+      <div style="flex:1">
+        <div style="font-size:13px;font-weight:600">${e.name}</div>
+        <div style="font-size:11px;color:var(--c-gray)">${e.role}</div>
+      </div>
+      <div style="font-size:11px;cursor:pointer;color:var(--c-red);padding:4px 8px;border-radius:6px;border:1px solid #e57373" onclick="delEmployee('${e.id}')">ลบ</div>
+    </div>`).join('');
+}
+
+function getTodayLogs(){
+  const now = new Date();
+  return attendanceLogs.filter(l => {
+    const d = new Date(l.ts);
+    return d.getDate()===now.getDate()&&d.getMonth()===now.getMonth()&&d.getFullYear()===now.getFullYear();
+  });
+}
+
+function doClockAction(type){
+  const sel = document.getElementById('hr-emp-sel');
+  if(!sel || !sel.value){ alert('กรุณาเลือกพนักงาน'); return; }
+  const emp = employees.find(e => e.id === sel.value);
+  if(!emp) return;
+  const now = Date.now();
+  const label = type === 'in' ? 'เข้างาน' : 'ออกงาน';
+  // Check duplicate: ถ้าเพิ่งตอกภายใน 1 นาที ให้เตือน
+  const recent = attendanceLogs.filter(l => l.empId === emp.id && Math.abs(now - l.ts) < 60000);
+  if(recent.length){ alert('⚠️ บันทึกไปแล้วเมื่อกี้นี้ กรุณารอสักครู่'); return; }
+  attendanceLogs.push({empId: emp.id, empName: emp.name, role: emp.role, type, ts: now});
+  saveHrData();
+  renderHrTodayStatus();
+  renderHrLog();
+  const timeStr = new Date(now).toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'});
+  alert(`✅ ${emp.name} ${label} เวลา ${timeStr} น.`);
+}
+
+function renderHrTodayStatus(){
+  const el = document.getElementById('hr-today-status');
+  if(!el) return;
+  const todayLogs = getTodayLogs();
+  if(!employees.length){ el.innerHTML = '<div style="color:var(--c-gray);font-size:12px">ยังไม่มีพนักงาน</div>'; return; }
+  el.innerHTML = employees.map(emp => {
+    const empLogs = todayLogs.filter(l => l.empId === emp.id).sort((a,b) => a.ts - b.ts);
+    const lastLog = empLogs[empLogs.length - 1];
+    const isIn = lastLog && lastLog.type === 'in';
+    const timeStr = lastLog ? new Date(lastLog.ts).toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'}) : '';
+    const firstIn = empLogs.find(l => l.type === 'in');
+    return `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:0.5px solid var(--c-border)">
+      <div style="width:8px;height:8px;border-radius:50%;background:${lastLog ? (isIn?'var(--c-green)':'var(--c-gray)'):'#d1d5db'};flex-shrink:0"></div>
+      <div style="flex:1">
+        <div style="font-size:12px;font-weight:600">${emp.name}</div>
+        <div style="font-size:10px;color:var(--c-gray)">${lastLog ? (isIn?'เข้างาน '+timeStr:'ออกงาน '+timeStr) : 'ยังไม่ได้ตอกบัตร'}</div>
+      </div>
+      <span style="font-size:10px;padding:2px 7px;border-radius:10px;font-weight:600;background:${lastLog?(isIn?'var(--c-green-light)':'var(--c-bg2)'):'var(--c-bg2)'};color:${lastLog?(isIn?'var(--c-green)':'var(--c-gray)'):'var(--c-gray)'}">${lastLog?(isIn?'อยู่':'ออกแล้ว'):'ไม่มา'}</span>
+    </div>`;
+  }).join('');
+}
+
+function setHrLogTab(tab){
+  hrLogTab = tab;
+  document.querySelectorAll('[id^="hrlog-tab-"]').forEach(t => t.classList.remove('active'));
+  const tabEl = document.getElementById('hrlog-tab-' + tab);
+  if(tabEl) tabEl.classList.add('active');
+  renderHrLog();
+}
+
+function getLogsForTab(){
+  const now = new Date();
+  return attendanceLogs.filter(l => {
+    const d = new Date(l.ts);
+    if(hrLogTab === 'today') return d.getDate()===now.getDate()&&d.getMonth()===now.getMonth()&&d.getFullYear()===now.getFullYear();
+    if(hrLogTab === 'week') return (now - d) < 7*24*3600000;
+    return d.getMonth()===now.getMonth()&&d.getFullYear()===now.getFullYear();
+  }).sort((a,b) => b.ts - a.ts);
+}
+
+function renderHrLog(){
+  const el = document.getElementById('hr-log-body');
+  if(!el) return;
+  const logs = getLogsForTab();
+  if(!logs.length){
+    el.innerHTML = '<div style="text-align:center;color:var(--c-gray);padding:20px;background:var(--c-bg);border-radius:12px;border:0.5px solid var(--c-border)">ไม่มีข้อมูลการตอกบัตร</div>';
+    return;
+  }
+  // Group by date
+  const byDate = {};
+  logs.forEach(l => {
+    const dk = new Date(l.ts).toLocaleDateString('th-TH',{day:'numeric',month:'short',year:'numeric'});
+    if(!byDate[dk]) byDate[dk] = [];
+    byDate[dk].push(l);
+  });
+  let html = '';
+  Object.entries(byDate).forEach(([date, dayLogs]) => {
+    html += `<div style="font-size:11px;font-weight:700;color:var(--c-gray);padding:8px 0 4px;text-transform:uppercase;letter-spacing:0.05em">${date}</div>`;
+    html += '<div style="background:var(--c-bg);border-radius:10px;border:0.5px solid var(--c-border);overflow:hidden;margin-bottom:8px">';
+    dayLogs.forEach((l, i) => {
+      const timeStr = new Date(l.ts).toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+      const isIn = l.type === 'in';
+      html += `<div style="display:flex;align-items:center;gap:10px;padding:9px 12px;${i>0?'border-top:0.5px solid var(--c-border)':''}">
+        <span style="font-size:16px">${isIn ? '✅' : '🏁'}</span>
+        <div style="flex:1">
+          <div style="font-size:12px;font-weight:600">${l.empName}</div>
+          <div style="font-size:10px;color:var(--c-gray)">${l.role||''}</div>
+        </div>
+        <div style="text-align:right">
+          <div style="font-size:12px;font-weight:700;color:${isIn?'var(--c-green)':'var(--c-blue)'}">${isIn?'เข้างาน':'ออกงาน'}</div>
+          <div style="font-size:11px;color:var(--c-gray)">${timeStr}</div>
+        </div>
+      </div>`;
+    });
+    html += '</div>';
+  });
+  el.innerHTML = html;
+}
+
+// HR Clock display
+function updateHrClock(){
+  const now = new Date();
+  const clockEl = document.getElementById('hr-clock');
+  const dateEl = document.getElementById('hr-date');
+  if(clockEl) clockEl.textContent = now.toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  if(dateEl) dateEl.textContent = now.toLocaleDateString('th-TH',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+}
+setInterval(updateHrClock, 1000);
+updateHrClock();
+
+function downloadHrExcel(){
+  if(typeof XLSX === 'undefined'){ alert('กำลังโหลด library'); return; }
+  const logs = getLogsForTab();
+  const rows = [['ชื่อพนักงาน','ตำแหน่ง','ประเภท','วันที่','เวลา']];
+  logs.forEach(l => {
+    const d = new Date(l.ts);
+    rows.push([l.empName, l.role||'', l.type==='in'?'เข้างาน':'ออกงาน',
+      d.toLocaleDateString('th-TH'), d.toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit',second:'2-digit'})]);
+  });
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  ws['!cols'] = [{wch:20},{wch:16},{wch:10},{wch:14},{wch:12}];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'บันทึกเวลา');
+  XLSX.writeFile(wb, 'hr_attendance.xlsx');
+}
+
 // ===== INIT =====
 loadOrders();
+loadReceiptSettings();
+loadHrData();
 renderTmap();
 renderMenuCats();
 renderMenuGrid();
