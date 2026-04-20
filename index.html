@@ -63,6 +63,28 @@
       window.renderSettings && window.renderSettings();
     }
   }, (err) => { console.warn("Firestore settings error:", err); });
+
+  // ---- HR: Real-time sync employees ----
+  onSnapshot(doc(db, "hr", "employees"), (docSnap) => {
+    const data = docSnap.exists() ? docSnap.data() : {};
+    const newEmps = data.list || [];
+    employees.splice(0, employees.length, ...newEmps);
+    window.renderHrEmpSelect && window.renderHrEmpSelect();
+    window.renderHrEmpList   && window.renderHrEmpList();
+    window.renderHrTodayStatus && window.renderHrTodayStatus();
+  }, (err) => { console.warn("Firestore HR employees error:", err); });
+
+  // ---- HR: Real-time sync attendance logs ----
+  onSnapshot(query(collection(db, "attendance"), orderBy("ts", "desc")), (snapshot) => {
+    const newLogs = [];
+    snapshot.forEach(d => newLogs.push({ ...d.data(), _docId: d.id }));
+    attendanceLogs.splice(0, attendanceLogs.length, ...newLogs);
+    window.renderHrTodayStatus && window.renderHrTodayStatus();
+    window.renderHrLog         && window.renderHrLog();
+    if (document.getElementById('page-hr')?.classList.contains('active')) {
+      window.renderHrTodayStatus && window.renderHrTodayStatus();
+    }
+  }, (err) => { console.warn("Firestore attendance error:", err); });
 </script>
 </head>
 <body>
@@ -494,7 +516,6 @@ body{font-family:'Sarabun',sans-serif;font-size:14px;color:var(--color-text-prim
         <div class="sum-total"><span>ยอดสุทธิ</span><span id="s-total" style="color:var(--c-orange)">฿0</span></div>
         <button class="act-btn btn-save" onclick="saveOrder()">💾 บันทึก (ค้างชำระ)</button>
         <button class="act-btn btn-pay" id="btn-pay" onclick="confirmPay()">✓ ยืนยันชำระเงิน</button>
-        <button class="act-btn" id="btn-print" onclick="openPrintPreview()" style="background:var(--c-blue-light);color:var(--c-blue);border:1.5px solid #90caf9;margin-top:5px">🖨️ ปริ้นบิล</button>
       </div>
     </div>
   </div>
@@ -2160,28 +2181,42 @@ function renderMenuSummary(){
 }
 
 // ===== HR SYSTEM =====
-const HR_KEY = 'buffet_pos_hr';
 let employees = [];
-let attendanceLogs = []; // [{empId, empName, type:'in'|'out', ts}]
+let attendanceLogs = [];
 let hrLogTab = 'today';
 
-function loadHrData(){
+// ---- Firestore HR helpers ----
+async function saveEmployeesToFirestore(){
+  if(!window._fbReady) return;
+  const { doc, setDoc } = window._fbModules;
   try {
-    const d = JSON.parse(localStorage.getItem(HR_KEY) || '{}');
-    employees = d.employees || [
-      {id:'e1', name:'สมชาย ใจดี', role:'แคชเชียร์'},
-      {id:'e2', name:'สมหญิง รักงาน', role:'พนักงานเสิร์ฟ'},
-    ];
-    attendanceLogs = d.logs || [];
-  } catch(e){ employees=[]; attendanceLogs=[]; }
+    await setDoc(doc(window._db, "hr", "employees"), { list: employees });
+  } catch(e){ console.warn("HR save employees error:", e); }
+}
+
+async function saveAttendanceLog(logEntry){
+  if(!window._fbReady) return;
+  const { doc, setDoc } = window._fbModules;
+  const docId = 'att_' + logEntry.ts + '_' + logEntry.empId;
+  try {
+    await setDoc(doc(window._db, "attendance", docId), logEntry);
+  } catch(e){ console.warn("HR save attendance error:", e); }
+}
+
+async function deleteAttendanceLog(docId){
+  if(!window._fbReady) return;
+  const { doc, deleteDoc } = window._fbModules;
+  try {
+    await deleteDoc(doc(window._db, "attendance", docId));
+  } catch(e){ console.warn("HR delete attendance error:", e); }
+}
+
+function loadHrData(){
+  // Firestore onSnapshot จะ sync อัตโนมัติ แค่ render UI
   renderHrEmpSelect();
   renderHrEmpList();
   renderHrTodayStatus();
   renderHrLog();
-}
-
-function saveHrData(){
-  localStorage.setItem(HR_KEY, JSON.stringify({employees, logs: attendanceLogs}));
 }
 
 function addEmployee(){
@@ -2191,7 +2226,7 @@ function addEmployee(){
   employees.push({id: 'e' + Date.now(), name, role: role||'พนักงาน'});
   document.getElementById('hr-new-name').value = '';
   document.getElementById('hr-new-role').value = '';
-  saveHrData();
+  saveEmployeesToFirestore();
   renderHrEmpSelect();
   renderHrEmpList();
 }
@@ -2199,7 +2234,7 @@ function addEmployee(){
 function delEmployee(id){
   if(!confirm('ลบพนักงานคนนี้?')) return;
   employees = employees.filter(e => e.id !== id);
-  saveHrData();
+  saveEmployeesToFirestore();
   renderHrEmpSelect();
   renderHrEmpList();
   renderHrTodayStatus();
@@ -2234,20 +2269,19 @@ function getTodayLogs(){
   });
 }
 
-function doClockAction(type){
+async function doClockAction(type){
   const sel = document.getElementById('hr-emp-sel');
   if(!sel || !sel.value){ alert('กรุณาเลือกพนักงาน'); return; }
   const emp = employees.find(e => e.id === sel.value);
   if(!emp) return;
   const now = Date.now();
   const label = type === 'in' ? 'เข้างาน' : 'ออกงาน';
-  // Check duplicate: ถ้าเพิ่งตอกภายใน 1 นาที ให้เตือน
+  // ป้องกัน double-tap ภายใน 60 วินาที
   const recent = attendanceLogs.filter(l => l.empId === emp.id && Math.abs(now - l.ts) < 60000);
   if(recent.length){ alert('⚠️ บันทึกไปแล้วเมื่อกี้นี้ กรุณารอสักครู่'); return; }
-  attendanceLogs.push({empId: emp.id, empName: emp.name, role: emp.role, type, ts: now});
-  saveHrData();
-  renderHrTodayStatus();
-  renderHrLog();
+  const logEntry = {empId: emp.id, empName: emp.name, role: emp.role, type, ts: now};
+  // บันทึก Firestore — onSnapshot จะ push เข้า attendanceLogs และ re-render อัตโนมัติ
+  await saveAttendanceLog(logEntry);
   const timeStr = new Date(now).toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'});
   alert(`✅ ${emp.name} ${label} เวลา ${timeStr} น.`);
 }
@@ -2382,6 +2416,12 @@ window.renderMenuCats = renderMenuCats;
 window.renderDiscChips = renderDiscChips;
 window.renderPayGrid = renderPayGrid;
 window.renderSettings = renderSettings;
+window.renderHrEmpSelect   = renderHrEmpSelect;
+window.renderHrEmpList     = renderHrEmpList;
+window.renderHrTodayStatus = renderHrTodayStatus;
+window.renderHrLog         = renderHrLog;
+window.employees           = employees;
+window.attendanceLogs      = attendanceLogs;
 </script>
 </body>
 </html>
