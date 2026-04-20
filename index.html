@@ -452,13 +452,25 @@ body{font-family:'Sarabun',sans-serif;font-size:14px;color:var(--color-text-prim
           </div>
         </div>
         <!-- Attendance log tabs -->
-        <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;align-items:center;justify-content:space-between">
-          <div style="display:flex;gap:6px">
+        <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;align-items:center;justify-content:space-between">
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
             <button class="period-tab active" id="hrlog-tab-today" onclick="setHrLogTab('today')">วันนี้</button>
             <button class="period-tab" id="hrlog-tab-week" onclick="setHrLogTab('week')">สัปดาห์</button>
             <button class="period-tab" id="hrlog-tab-month" onclick="setHrLogTab('month')">เดือน</button>
+            <button class="period-tab" id="hrlog-tab-custom" onclick="setHrLogTab('custom')">📅 เลือกวันที่</button>
           </div>
           <button onclick="downloadHrExcel()" class="dl-btn" style="font-size:11px;padding:5px 12px">⬇ Excel</button>
+        </div>
+        <!-- Custom date range picker (shown only when custom tab active) -->
+        <div id="hr-date-picker" style="display:none;background:var(--c-bg);border:1px solid var(--c-border);border-radius:10px;padding:10px 12px;margin-bottom:10px;display:none">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <label style="font-size:11px;font-weight:600;color:var(--c-gray);white-space:nowrap">จากวันที่</label>
+            <input type="date" id="hr-date-from" style="padding:5px 9px;border-radius:7px;border:1px solid var(--c-border);font-size:12px;background:var(--c-bg2);color:var(--color-text-primary);font-family:'Sarabun',sans-serif">
+            <label style="font-size:11px;font-weight:600;color:var(--c-gray);white-space:nowrap">ถึงวันที่</label>
+            <input type="date" id="hr-date-to" style="padding:5px 9px;border-radius:7px;border:1px solid var(--c-border);font-size:12px;background:var(--c-bg2);color:var(--color-text-primary);font-family:'Sarabun',sans-serif">
+            <button onclick="applyHrDateRange()" style="padding:5px 14px;border-radius:7px;background:var(--c-orange);color:#fff;border:none;font-size:12px;cursor:pointer;font-weight:600;font-family:'Sarabun',sans-serif;white-space:nowrap">✓ ดูข้อมูล</button>
+          </div>
+          <div id="hr-date-range-label" style="font-size:11px;color:var(--c-gray);margin-top:6px"></div>
         </div>
         <div id="hr-log-body"></div>
         <!-- Manage employees section -->
@@ -2308,11 +2320,46 @@ function renderHrTodayStatus(){
   }).join('');
 }
 
+let hrDateFrom = null; // Date object
+let hrDateTo = null;   // Date object
+
 function setHrLogTab(tab){
   hrLogTab = tab;
   document.querySelectorAll('[id^="hrlog-tab-"]').forEach(t => t.classList.remove('active'));
   const tabEl = document.getElementById('hrlog-tab-' + tab);
   if(tabEl) tabEl.classList.add('active');
+  const picker = document.getElementById('hr-date-picker');
+  if(picker){
+    picker.style.display = tab === 'custom' ? 'block' : 'none';
+    if(tab === 'custom'){
+      // ตั้ง default: 7 วันที่แล้ว ถึง วันนี้
+      const today = new Date();
+      const weekAgo = new Date(today); weekAgo.setDate(today.getDate() - 6);
+      const fromEl = document.getElementById('hr-date-from');
+      const toEl = document.getElementById('hr-date-to');
+      if(fromEl && !fromEl.value) fromEl.value = weekAgo.toISOString().slice(0,10);
+      if(toEl && !toEl.value) toEl.value = today.toISOString().slice(0,10);
+      applyHrDateRange();
+      return;
+    }
+  }
+  renderHrLog();
+}
+
+function applyHrDateRange(){
+  const fromVal = document.getElementById('hr-date-from')?.value;
+  const toVal   = document.getElementById('hr-date-to')?.value;
+  if(!fromVal || !toVal){ alert('กรุณาเลือกวันที่เริ่มต้นและสิ้นสุด'); return; }
+  hrDateFrom = new Date(fromVal + 'T00:00:00');
+  hrDateTo   = new Date(toVal   + 'T23:59:59');
+  if(hrDateFrom > hrDateTo){ alert('วันที่เริ่มต้นต้องไม่เกินวันที่สิ้นสุด'); return; }
+  const labelEl = document.getElementById('hr-date-range-label');
+  if(labelEl){
+    const fStr = hrDateFrom.toLocaleDateString('th-TH',{day:'numeric',month:'short',year:'numeric'});
+    const tStr = hrDateTo.toLocaleDateString('th-TH',{day:'numeric',month:'short',year:'numeric'});
+    const logs = getLogsForTab();
+    labelEl.textContent = `แสดงข้อมูล ${fStr} – ${tStr} (พบ ${logs.length} รายการ)`;
+  }
   renderHrLog();
 }
 
@@ -2321,7 +2368,9 @@ function getLogsForTab(){
   return attendanceLogs.filter(l => {
     const d = new Date(l.ts);
     if(hrLogTab === 'today') return d.getDate()===now.getDate()&&d.getMonth()===now.getMonth()&&d.getFullYear()===now.getFullYear();
-    if(hrLogTab === 'week') return (now - d) < 7*24*3600000;
+    if(hrLogTab === 'week')  return (now - d) < 7*24*3600000;
+    if(hrLogTab === 'month') return d.getMonth()===now.getMonth()&&d.getFullYear()===now.getFullYear();
+    if(hrLogTab === 'custom' && hrDateFrom && hrDateTo) return d >= hrDateFrom && d <= hrDateTo;
     return d.getMonth()===now.getMonth()&&d.getFullYear()===now.getFullYear();
   }).sort((a,b) => b.ts - a.ts);
 }
